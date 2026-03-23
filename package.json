@@ -1,0 +1,39 @@
+{
+  "name": "flashcard-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@11labs/react": "^0.2.0",
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@elevenlabs/client": "^0.15.2",
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "@mendable/firecrawl-js": "^4.16.0",
+    "@netlify/blobs": "^10.7.4",
+    "@netlify/functions": "^5.1.5",
+    "@react-oauth/google": "^0.13.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "stripe": "^20.4.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "netlify-cli": "^24.4.0",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.1"
+  }
+}

@@ -1,0 +1,76 @@
+// Generate sample flashcard decks for testing
+const sampleDecks = {
+  "deck-organic-chem": {
+    name: "Organic Chemistry",
+    cards: [
+      { id: "oc-1", front: "What is an SN1 reaction?", back: "A unimolecular nucleophilic substitution reaction that proceeds through a carbocation intermediate. The rate depends only on the substrate concentration.", category: "Organic Chemistry" },
+      { id: "oc-2", front: "What is an SN2 reaction?", back: "A bimolecular nucleophilic substitution that occurs in one concerted step with backside attack. Rate depends on both substrate and nucleophile concentration.", category: "Organic Chemistry" },
+      { id: "oc-3", front: "What is Markovnikov's rule?", back: "When HX adds to an asymmetric alkene, the hydrogen attaches to the carbon with more hydrogen atoms, and the halide to the carbon with fewer hydrogens (more substituted carbon).", category: "Organic Chemistry" },
+      { id: "oc-4", front: "What is a chiral center?", back: "A carbon atom bonded to four different substituents, creating a stereocenter that produces non-superimposable mirror images (enantiomers).", category: "Organic Chemistry" },
+      { id: "oc-5", front: "What is the difference between E1 and E2 elimination?", back: "E1 is unimolecular (two steps via carbocation), favored by weak bases and polar protic solvents. E2 is bimolecular (one concerted step), favored by strong bases and requires anti-periplanar geometry.", category: "Organic Chemistry" },
+      { id: "oc-6", front: "What are enantiomers?", back: "Stereoisomers that are non-superimposable mirror images of each other. They have identical physical properties except for the direction they rotate plane-polarized light.", category: "Organic Chemistry" },
+      { id: "oc-7", front: "What is a Grignard reagent?", back: "An organomagnesium halide (RMgX) that acts as a strong nucleophile and base. Used to form new C-C bonds by reacting with carbonyl compounds.", category: "Organic Chemistry" },
+      { id: "oc-8", front: "What is aromaticity?", back: "A cyclic, planar, fully conjugated molecule with (4n+2) pi electrons (Hückel's rule). Aromatic compounds are unusually stable due to electron delocalization.", category: "Organic Chemistry" },
+      { id: "oc-9", front: "What is a Fischer projection?", back: "A 2D representation of a 3D organic molecule where horizontal lines represent bonds coming toward the viewer and vertical lines represent bonds going away.", category: "Organic Chemistry" },
+      { id: "oc-10", front: "What is an aldol reaction?", back: "A reaction between two carbonyl compounds where the enolate of one attacks the carbonyl carbon of another, forming a β-hydroxy carbonyl compound.", category: "Organic Chemistry" },
+      { id: "oc-11", front: "What determines whether SN1 or SN2 will dominate?", back: "Substrate structure (3° favors SN1, 1° favors SN2), nucleophile strength (strong = SN2), solvent (polar protic = SN1, polar aprotic = SN2), and leaving group ability.", category: "Organic Chemistry" },
+      { id: "oc-12", front: "What is a diastereomer?", back: "Stereoisomers that are NOT mirror images of each other. They have different physical properties and different R/S configurations at one or more (but not all) stereocenters.", category: "Organic Chemistry" },
+    ],
+  },
+  "deck-anatomy": {
+    name: "Anatomy & Physiology",
+    cards: [
+      { id: "an-1", front: "What are the four chambers of the heart?", back: "Right atrium, right ventricle, left atrium, and left ventricle. The right side pumps deoxygenated blood to the lungs; the left side pumps oxygenated blood to the body.", category: "Anatomy" },
+      { id: "an-2", front: "What is the function of the nephron?", back: "The functional unit of the kidney that filters blood, reabsorbs useful substances (glucose, amino acids, water), and secretes waste to form urine.", category: "Anatomy" },
+      { id: "an-3", front: "What are the three types of muscle tissue?", back: "Skeletal (voluntary, striated), cardiac (involuntary, striated, intercalated discs), and smooth (involuntary, non-striated, found in organs and blood vessels).", category: "Anatomy" },
+      { id: "an-4", front: "What is the function of the medulla oblongata?", back: "Controls autonomic functions including heart rate, blood pressure, breathing, swallowing, and vomiting. Located in the brainstem.", category: "Anatomy" },
+      { id: "an-5", front: "What are the major components of the respiratory system?", back: "Nose/mouth, pharynx, larynx, trachea, bronchi, bronchioles, and alveoli. Gas exchange occurs at the alveoli where O2 enters blood and CO2 is expelled.", category: "Anatomy" },
+      { id: "an-6", front: "What is the function of the liver?", back: "Detoxification, bile production, glycogen storage, protein synthesis (albumin, clotting factors), cholesterol metabolism, and drug metabolism.", category: "Anatomy" },
+      { id: "an-7", front: "What are the layers of the skin?", back: "Epidermis (outer, keratinized), dermis (connective tissue, blood vessels, nerves, glands), and hypodermis/subcutaneous layer (fat storage, insulation).", category: "Anatomy" },
+      { id: "an-8", front: "What is the difference between sympathetic and parasympathetic nervous systems?", back: "Sympathetic = 'fight or flight' (increases heart rate, dilates pupils, inhibits digestion). Parasympathetic = 'rest and digest' (decreases heart rate, stimulates digestion).", category: "Anatomy" },
+      { id: "an-9", front: "What are the major endocrine glands?", back: "Hypothalamus, pituitary, thyroid, parathyroid, adrenals, pancreas (islets of Langerhans), gonads (ovaries/testes), and pineal gland.", category: "Anatomy" },
+      { id: "an-10", front: "What is the role of the cerebellum?", back: "Coordinates voluntary movements, balance, posture, and motor learning. It fine-tunes motor activity and helps maintain equilibrium.", category: "Anatomy" },
+      { id: "an-11", front: "What are the components of blood?", back: "Plasma (55%), red blood cells/erythrocytes, white blood cells/leukocytes, and platelets/thrombocytes. Plasma contains water, proteins, electrolytes, and waste.", category: "Anatomy" },
+      { id: "an-12", front: "What is the function of the pancreas?", back: "Dual function: exocrine (digestive enzymes — lipase, amylase, trypsin) and endocrine (hormones — insulin from beta cells lowers blood sugar, glucagon from alpha cells raises it).", category: "Anatomy" },
+      { id: "an-13", front: "What is the lymphatic system?", back: "Network of vessels, nodes, and organs that returns interstitial fluid to blood, transports dietary fats, and houses immune cells. Includes lymph nodes, spleen, thymus, and tonsils.", category: "Anatomy" },
+    ],
+  },
+  "deck-physics": {
+    name: "Physics 101",
+    cards: [
+      { id: "ph-1", front: "What is Newton's Second Law?", back: "F = ma. The net force on an object equals its mass times its acceleration. Force and acceleration are vectors in the same direction.", category: "Physics" },
+      { id: "ph-2", front: "What is the difference between kinetic and potential energy?", back: "Kinetic energy (KE = ½mv²) is energy of motion. Potential energy is stored energy due to position (gravitational PE = mgh) or configuration (elastic PE = ½kx²).", category: "Physics" },
+      { id: "ph-3", front: "What is Ohm's Law?", back: "V = IR. Voltage equals current times resistance. Applies to ohmic conductors where resistance is constant regardless of voltage.", category: "Physics" },
+      { id: "ph-4", front: "What is the first law of thermodynamics?", back: "Energy cannot be created or destroyed, only transferred or converted. ΔU = Q - W (change in internal energy = heat added - work done by system).", category: "Physics" },
+      { id: "ph-5", front: "What is the Doppler effect?", back: "The change in frequency/wavelength of a wave as the source and observer move relative to each other. Approaching = higher frequency (blue shift); receding = lower frequency (red shift).", category: "Physics" },
+      { id: "ph-6", front: "What is the relationship between frequency, wavelength, and speed?", back: "v = fλ. Wave speed equals frequency times wavelength. For electromagnetic waves in vacuum, v = c = 3 × 10⁸ m/s.", category: "Physics" },
+      { id: "ph-7", front: "What is Coulomb's Law?", back: "F = kq₁q₂/r². The electrostatic force between two charges is proportional to the product of charges and inversely proportional to the square of the distance.", category: "Physics" },
+      { id: "ph-8", front: "What is the difference between series and parallel circuits?", back: "Series: same current, voltages add, resistances add (R_total = R1+R2). Parallel: same voltage, currents add, 1/R_total = 1/R1 + 1/R2.", category: "Physics" },
+      { id: "ph-9", front: "What is buoyant force?", back: "An upward force exerted by a fluid on a submerged or floating object. Archimedes' principle: buoyant force = weight of displaced fluid (F_b = ρ_fluid × V_displaced × g).", category: "Physics" },
+      { id: "ph-10", front: "What is the second law of thermodynamics?", back: "Entropy of an isolated system always increases. Heat flows spontaneously from hot to cold. No heat engine can be 100% efficient.", category: "Physics" },
+      { id: "ph-11", front: "What is angular momentum?", back: "L = Iω (moment of inertia × angular velocity) or L = r × p (position × linear momentum). Angular momentum is conserved when no external torque acts.", category: "Physics" },
+      { id: "ph-12", front: "What is Bernoulli's principle?", back: "In a flowing fluid, an increase in speed occurs simultaneously with a decrease in pressure. P + ½ρv² + ρgh = constant along a streamline.", category: "Physics" },
+      { id: "ph-13", front: "What is the photoelectric effect?", back: "When light above a threshold frequency strikes a metal surface, electrons are emitted. Energy of emitted electrons depends on frequency, not intensity. E = hf - φ (work function).", category: "Physics" },
+    ],
+  },
+  "deck-psychology": {
+    name: "Psychology 101",
+    cards: [
+      { id: "ps-1", front: "What are Piaget's four stages of cognitive development?", back: "Sensorimotor (0-2), Preoperational (2-7), Concrete Operational (7-11), Formal Operational (11+). Children progress through stages in order, each building on the last.", category: "Psychology" },
+      { id: "ps-2", front: "What is classical conditioning?", back: "Learning through association. A neutral stimulus is paired with an unconditioned stimulus until the neutral stimulus alone produces the response. Discovered by Pavlov (dog salivation experiments).", category: "Psychology" },
+      { id: "ps-3", front: "What is the difference between positive and negative reinforcement?", back: "Positive reinforcement: adding a pleasant stimulus to increase behavior. Negative reinforcement: removing an unpleasant stimulus to increase behavior. Both INCREASE the target behavior.", category: "Psychology" },
+      { id: "ps-4", front: "What is Maslow's hierarchy of needs?", back: "Bottom to top: Physiological → Safety → Love/Belonging → Esteem → Self-Actualization. Lower needs must be met before higher needs motivate behavior.", category: "Psychology" },
+      { id: "ps-5", front: "What is the bystander effect?", back: "The tendency for individuals to be less likely to help in an emergency when other people are present. Diffusion of responsibility increases with group size.", category: "Psychology" },
+      { id: "ps-6", front: "What are the Big Five personality traits?", back: "OCEAN: Openness to experience, Conscientiousness, Extraversion, Agreeableness, Neuroticism. The most widely accepted trait model in personality psychology.", category: "Psychology" },
+      { id: "ps-7", front: "What is cognitive dissonance?", back: "The mental discomfort from holding contradictory beliefs, attitudes, or behaviors. People are motivated to reduce dissonance by changing beliefs, adding new beliefs, or minimizing importance.", category: "Psychology" },
+      { id: "ps-8", front: "What is the difference between short-term and long-term memory?", back: "Short-term/working memory: limited capacity (~7 items), brief duration (15-30 sec). Long-term memory: unlimited capacity, potentially permanent. Transfer requires encoding/rehearsal.", category: "Psychology" },
+      { id: "ps-9", front: "What is Erikson's psychosocial crisis for adolescence?", back: "Identity vs. Role Confusion (ages 12-18). Adolescents explore who they are and develop a sense of self. Failure leads to confusion about one's role in society.", category: "Psychology" },
+      { id: "ps-10", front: "What is the fundamental attribution error?", back: "The tendency to overestimate dispositional (personality) factors and underestimate situational factors when explaining others' behavior. We attribute our own failures to situations.", category: "Psychology" },
+      { id: "ps-11", front: "What are the stages of grief (Kübler-Ross)?", back: "Denial → Anger → Bargaining → Depression → Acceptance. Not everyone experiences all stages or in this order. Originally described for terminally ill patients.", category: "Psychology" },
+      { id: "ps-12", front: "What is operant conditioning?", back: "Learning through consequences. Behavior followed by reinforcement increases; behavior followed by punishment decreases. Developed by B.F. Skinner using Skinner boxes.", category: "Psychology" },
+    ],
+  },
+};
+
+// Output as JSON
+console.log(JSON.stringify(sampleDecks, null, 2));
