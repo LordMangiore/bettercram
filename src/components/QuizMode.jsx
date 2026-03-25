@@ -132,9 +132,14 @@ export default function QuizMode({ cards }) {
           <div className="flex gap-4 justify-center">
             <button
               onClick={startQuiz}
-              className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors"
+              disabled={loading}
+              className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              New Quiz
+              {loading ? (
+                <><i className="fa-solid fa-spinner fa-spin mr-2" />Generating...</>
+              ) : (
+                "New Quiz"
+              )}
             </button>
             <button
               onClick={() => { setQuestions(null); setFinished(false); }}

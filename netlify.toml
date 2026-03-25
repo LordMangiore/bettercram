@@ -5,6 +5,31 @@
 
 [functions]
   node_bundler = "esbuild"
+  external_node_modules = ["@anthropic-ai/sdk"]
+
+[functions."deep-dive"]
+  timeout = 26
+
+[functions."audio-session"]
+  timeout = 26
+
+[functions."generate-cards"]
+  timeout = 26
+
+[functions."generate-more"]
+  timeout = 26
+
+[functions."tutor-chat"]
+  timeout = 26
+
+[functions."generate-quiz"]
+  timeout = 26
+
+[functions."publish-deck"]
+  timeout = 26
+
+[functions."seed-sample-decks"]
+  timeout = 26
 
 [dev]
   command = "npm run dev"

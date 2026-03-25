@@ -4,61 +4,61 @@ export default async (req) => {
   }
 
   try {
-    const { url } = await req.json();
+    const { url, attempt } = await req.json();
+    const apiKey = process.env.FIRECRAWL_API_KEY;
 
     if (!url) {
-      return new Response(JSON.stringify({ error: "No URL provided" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return Response.json({ error: "No URL provided" }, { status: 400 });
     }
+
+    // Use a longer Firecrawl timeout for large docs
+    // The Netlify function has a 26s limit, so we set Firecrawl to 25s
+    // If Firecrawl needs more time, it'll return a SCRAPE_TIMEOUT error
+    // and the frontend will retry (Firecrawl caches partial work so retries are faster)
+    const firecrawlTimeout = (attempt || 1) >= 2 ? 120000 : 25000;
 
     const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         url,
         formats: ["markdown"],
+        timeout: firecrawlTimeout,
       }),
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Firecrawl API error: ${response.status} - ${errText}`);
-    }
-
     const result = await response.json();
 
-    if (!result.success) {
-      throw new Error(result.error || "Failed to scrape URL");
+    if (result.success) {
+      const content = result.data?.markdown || result.markdown || "";
+      const title = result.data?.metadata?.title || result.metadata?.title || "Study Document";
+      return Response.json({ content, title, status: "done" });
     }
 
-    const content =
-      result.data?.markdown || result.markdown || "";
-    const title =
-      result.data?.metadata?.title || result.metadata?.title || "Study Document";
+    // Firecrawl timeout — tell frontend to retry
+    if (result.code === "SCRAPE_TIMEOUT") {
+      return Response.json({
+        status: "retry",
+        message: "Large document — retrying with extended timeout...",
+        url,
+      });
+    }
 
-    return new Response(
-      JSON.stringify({ content, title }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    // Other Firecrawl error
+    return Response.json({
+      error: result.error || "Failed to scrape document",
+      status: "error",
+    }, { status: 422 });
+
   } catch (error) {
     console.error("Error scraping document:", error);
-    return new Response(
-      JSON.stringify({
-        error: error.message || "Failed to scrape document",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+    return Response.json(
+      { error: error.message || "Failed to scrape document" },
+      { status: 500 }
     );
   }
 };
 
-export const config = {
-  path: "/.netlify/functions/scrape-doc",
-};

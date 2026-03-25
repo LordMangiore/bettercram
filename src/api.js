@@ -1,13 +1,18 @@
 const API_BASE = "/.netlify/functions";
 
 let _authToken = null;
+let _userId = null;
 export function setAuthToken(token) {
   _authToken = token;
+}
+export function setUserId(id) {
+  _userId = id;
 }
 
 function authHeaders() {
   const h = { "Content-Type": "application/json" };
   if (_authToken) h["Authorization"] = `Bearer ${_authToken}`;
+  if (_userId) h["X-User-Id"] = _userId;
   return h;
 }
 
@@ -32,14 +37,52 @@ export async function readGoogleDoc(docId, accessToken) {
   return res.json();
 }
 
-export async function scrapeDocument(url) {
-  const res = await fetch(`${API_BASE}/scrape-doc`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
-  });
-  if (!res.ok) throw new Error(await safeError(res, "Failed to scrape document"));
-  return res.json();
+export async function scrapeDocument(url, onStatus) {
+  const MAX_ATTEMPTS = 3;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (onStatus && attempt > 1) {
+      onStatus(`Large document — retry ${attempt}/${MAX_ATTEMPTS} (extended timeout)...`);
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/scrape-doc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, attempt }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+
+        // Success — got content
+        if (data.content && data.content.length > 50) return data;
+
+        // Firecrawl timeout — retry with next attempt
+        if (data.status === "retry") {
+          if (onStatus) onStatus(data.message || "Retrying large document...");
+          continue;
+        }
+      }
+
+      // Non-OK response
+      const errData = await res.json().catch(() => ({}));
+      if (attempt < MAX_ATTEMPTS && (res.status === 504 || res.status === 502)) {
+        if (onStatus) onStatus(`Server timeout — retry ${attempt + 1}/${MAX_ATTEMPTS}...`);
+        continue;
+      }
+
+      throw new Error(errData.error || "Failed to scrape document. Make sure it's shared publicly.");
+    } catch (e) {
+      if (attempt < MAX_ATTEMPTS && (e.message.includes("timeout") || e.message.includes("Failed to fetch"))) {
+        if (onStatus) onStatus(`Connection issue — retry ${attempt + 1}/${MAX_ATTEMPTS}...`);
+        continue;
+      }
+      throw e;
+    }
+  }
+
+  throw new Error("Document is too large to process. Try splitting it into smaller documents.");
 }
 
 export async function generateCards(content, category) {
@@ -106,21 +149,21 @@ export async function generateMore(existingCards, content) {
   return res.json();
 }
 
-export async function tutorChat(card, action, messages) {
+export async function tutorChat(card, action, messages, deckName) {
   const res = await fetch(`${API_BASE}/tutor-chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ card, action, messages }),
+    headers: authHeaders(),
+    body: JSON.stringify({ card, action, messages, deckName }),
   });
   if (!res.ok) throw new Error(await safeError(res, "Failed to get tutor response"));
   return res.json();
 }
 
-export async function deepDive(card, query) {
+export async function deepDive(card, query, deckName) {
   const res = await fetch(`${API_BASE}/deep-dive`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ card, query }),
+    headers: authHeaders(),
+    body: JSON.stringify({ card, query, deckName }),
   });
   if (!res.ok) throw new Error(await safeError(res, "Failed to research topic"));
   return res.json();
@@ -201,6 +244,14 @@ export async function loadDecks() {
   return res.json();
 }
 
+export async function loadDeck(deckId) {
+  const res = await fetch(`${API_BASE}/load-decks?deckId=${encodeURIComponent(deckId)}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to load deck"));
+  return res.json();
+}
+
 export async function saveDeck(deckId, deck) {
   const res = await fetch(`${API_BASE}/save-deck`, {
     method: "POST",
@@ -249,5 +300,70 @@ export async function manageSubscription(email) {
     }),
   });
   if (!res.ok) throw new Error(await safeError(res, "Failed to open billing portal"));
+  return res.json();
+}
+
+// Public deck sharing
+export async function publishDeck(deckId, action = "publish", userInfo = null) {
+  const res = await fetch(`${API_BASE}/publish-deck`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ deckId, action, userInfo }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to publish deck"));
+  return res.json();
+}
+
+export async function browsePublicDecks() {
+  const res = await fetch(`${API_BASE}/browse-decks`);
+  if (!res.ok) throw new Error(await safeError(res, "Failed to browse decks"));
+  return res.json();
+}
+
+export async function subscribeToDeck(publicDeckId) {
+  const res = await fetch(`${API_BASE}/copy-deck`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ publicDeckId, action: "subscribe" }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to add deck"));
+  return res.json();
+}
+
+export async function cloneDeck(publicDeckId) {
+  const res = await fetch(`${API_BASE}/copy-deck`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ publicDeckId, action: "clone" }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to clone deck"));
+  return res.json();
+}
+
+// Keep old name for backward compat
+export const copyPublicDeck = subscribeToDeck;
+
+// Fire-and-forget: precache the first card's podcast audio
+export function precacheFirstPodcast(card) {
+  if (!card?.front || !card?.back) return;
+  // Don't await — this runs in the background
+  fetch(`${API_BASE}/audio-session`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ card, mode: "podcast" }),
+  }).then(() => {
+    console.log("Precached first podcast for:", card.front.slice(0, 40));
+  }).catch(() => {
+    // Silent fail — precache is best-effort
+  });
+}
+
+export async function upvotePublicDeck(publicDeckId) {
+  const res = await fetch(`${API_BASE}/upvote-deck`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ publicDeckId }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to upvote deck"));
   return res.json();
 }

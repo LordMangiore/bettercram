@@ -15,8 +15,8 @@ function extractDocId(url) {
   return match ? match[1] : null;
 }
 
-export default function SetupScreen({ onCardsGenerated, onSkip, existingCards, dark, setDark }) {
-  const [url, setUrl] = useState("https://docs.google.com/document/d/1p7X3_n9K8sra6fYNUQgYeXcLJi3h9Uh3gGfGgV2N-K8/edit?tab=t.0");
+export default function SetupScreen({ onCardsGenerated, onSkip, existingCards, dark, setDark, initialUrl }) {
+  const [url, setUrl] = useState(initialUrl || "");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState(null);
@@ -32,7 +32,7 @@ export default function SetupScreen({ onCardsGenerated, onSkip, existingCards, d
       const docId = extractDocId(url);
 
       setStatus("Scraping document with Firecrawl...");
-      const result = await scrapeDocument(url);
+      const result = await scrapeDocument(url, (msg) => setStatus(msg));
       content = result.content;
 
       if (!content || content.trim().length < 50) {

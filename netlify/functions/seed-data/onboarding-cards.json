@@ -1,0 +1,107 @@
+[
+  {
+    "id": "onb-1",
+    "front": "Welcome to BetterCram! What makes this different from regular flashcards?",
+    "back": "BetterCram is a complete AI study platform with 7 modes: flip cards, spaced repetition study, AI quizzes, an AI tutor, deep research, podcast-style audio lessons, and Nova — your voice AI tutor. All powered by Claude, ElevenLabs, and Firecrawl.",
+    "category": "Getting Started",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-2",
+    "front": "How do you flip a flashcard?",
+    "back": "Tap or click the card to flip it. You can also press the spacebar! Use the left and right arrow keys to navigate between cards, or swipe on mobile.",
+    "category": "Getting Started",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-3",
+    "front": "What is the Study mode and how does spaced repetition work?",
+    "back": "Study mode tracks which cards you know and which you're still learning. Click 'Got It' or 'Still Learning' for each card. Cards you struggle with appear more often. After enough correct answers, a card moves to 'Mastered'. You can set how many new cards per session.",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-4",
+    "front": "How do AI-generated quizzes work?",
+    "back": "Go to the Quiz tab and Claude AI automatically generates multiple-choice questions from your flashcards. Each question has 4 options and a detailed explanation of the correct answer. Great for testing yourself before an exam!",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-5",
+    "front": "What can the AI Tutor do?",
+    "back": "The AI Tutor gives you three tools for any card: 'Explain' for a deep breakdown of the concept, 'Mnemonic' for a memory trick to help it stick, and 'Ask' to chat with Claude about anything related to the topic. It's like having a personal tutor available 24/7.",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-6",
+    "front": "Who is Nova?",
+    "back": "Nova is your AI voice tutor powered by ElevenLabs. Tap the Voice Tutor tab and start talking! Nova knows all the cards in your current deck and can quiz you verbally, explain concepts, and use the Socratic method to help you learn. It's like studying with a smart friend.",
+    "category": "Nova",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-7",
+    "front": "What does the Audio tab do?",
+    "back": "Audio mode has two options: Podcast Mode generates a conversational explanation of each card (Claude writes the script, ElevenLabs narrates it), and Read Through simply reads the card aloud. Perfect for studying while commuting, exercising, or relaxing. Enable auto-play to go hands-free!",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-8",
+    "front": "What is Deep Dive Research?",
+    "back": "Hit the Research tab on any card and Firecrawl searches the web for authoritative sources about that topic. Claude then synthesizes everything into a comprehensive explanation with real citations. It's like having a research assistant that finds you the best study resources instantly.",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-9",
+    "front": "How do you add your own study material?",
+    "back": "Go to Library (in the menu) → New Deck → give it a name and paste a Google Doc or Google Sheet URL. BetterCram will scrape the content and generate flashcards automatically using AI. Make sure the doc is shared as 'Anyone with the link can view'.",
+    "category": "Your Content",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-10",
+    "front": "What are Community Decks?",
+    "back": "Other students share their study decks with the community. Go to Library → Browse Community to find decks for your subject. You can 'Subscribe' to use a deck (stays synced with the creator) or 'Clone' it to make your own editable copy. The more people share, the better the library gets!",
+    "category": "Community",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-11",
+    "front": "Can you add your own custom cards?",
+    "back": "Yes! Go to Manage Cards in the menu. You can add new cards with a question, answer, and category. You can also edit or delete existing cards. This is great for adding concepts from lectures or textbooks that aren't in your doc.",
+    "category": "Your Content",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-12",
+    "front": "What is the Study Planner?",
+    "back": "The Study Planner helps you organize your study schedule. Set your exam date, add milestones, and track daily/weekly goals. Access it from the menu. It works with your study progress to show you what needs attention.",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-13",
+    "front": "How does the global audio cache work?",
+    "back": "When anyone plays a podcast or audio for a card, it gets cached globally. The next person who plays the same card gets it instantly — no waiting for AI generation. The more people study, the faster the platform gets for everyone!",
+    "category": "Pro Tips",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-14",
+    "front": "What keyboard shortcuts are available?",
+    "back": "Spacebar: flip card. Left/Right arrows: previous/next card. These work in Cards mode for quick navigation. On mobile, swipe left or right to navigate between cards.",
+    "category": "Pro Tips",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-15",
+    "front": "You're ready to start studying! What should you do first?",
+    "back": "Head to Library (in the menu) and either: 1) Browse Community to find a deck for your subject, 2) Create a New Deck from your own Google Doc/Sheet, or 3) Start studying this deck using the different modes above! Try the Audio tab — your first podcast is already ready to play.",
+    "category": "Getting Started",
+    "difficulty": "easy"
+  }
+]

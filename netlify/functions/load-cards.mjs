@@ -1,14 +1,7 @@
 import { getStore } from "@netlify/blobs";
 
 function getUserId(req) {
-  const auth = req.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) {
-    try {
-      const payload = JSON.parse(atob(auth.split(".")[1]));
-      return payload.sub || "default";
-    } catch {}
-  }
-  return "default";
+  return req.headers.get("x-user-id") || "default";
 }
 
 export default async (req) => {

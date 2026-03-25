@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { getStore } from "@netlify/blobs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -31,7 +32,48 @@ export default async function handler(req) {
     const customers = await stripe.customers.list({ email, limit: 1 });
 
     if (customers.data.length === 0) {
-      return Response.json({ active: false, plan: null });
+      // No Stripe customer — check if they have a free trial via blob store
+      const trialStore = getStore("trials");
+      const emailKey = email.toLowerCase().replace(/[^a-z0-9]/g, "-");
+      let trialData;
+      try {
+        trialData = await trialStore.get(emailKey, { type: "json" });
+      } catch {}
+
+      if (!trialData || !trialData.startedAt) {
+        // First time — start 7-day trial
+        trialData = { startedAt: new Date().toISOString(), email: email.toLowerCase() };
+        await trialStore.setJSON(emailKey, trialData);
+      }
+
+      const trialStart = new Date(trialData.startedAt);
+      // Guard against invalid dates
+      if (isNaN(trialStart.getTime())) {
+        // Reset trial data if corrupted
+        trialData = { startedAt: new Date().toISOString(), email: email.toLowerCase() };
+        await trialStore.setJSON(emailKey, trialData);
+      }
+
+      const validStart = new Date(trialData.startedAt);
+      const trialEnd = new Date(validStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const isTrialActive = Date.now() < trialEnd.getTime();
+
+      if (isTrialActive) {
+        return Response.json({
+          active: true,
+          plan: "pro",
+          status: "free_trial",
+          source: "auto_trial",
+          trialEnd: trialEnd.toISOString(),
+        });
+      } else {
+        return Response.json({
+          active: false,
+          plan: null,
+          trialExpired: true,
+          trialEnd: trialEnd.toISOString(),
+        });
+      }
     }
 
     const customer = customers.data[0];
@@ -52,10 +94,20 @@ export default async function handler(req) {
 
     const priceId = activeSub.items.data[0]?.price?.id;
     let plan = "starter";
+    // Pro monthly or Pro annual (live keys)
     if (
+      priceId === "price_1TEHqjE6n64xfKxisSUqamF0" || // Pro $25/mo (new)
+      priceId === "price_1TEBycE6n64xfKxiHdWfq2OC" || // Pro $19/mo (old)
+      priceId === "price_1TEBz1E6n64xfKxihyyqD2Wu" || // Pro Annual $149/yr
+      // Old test keys (backwards compat)
       priceId === "price_1TDz18E6n64xfKxiZkocCVZ1" ||
       priceId === "price_1TDz19E6n64xfKxiH0LX2o6O"
     ) {
+      plan = "pro";
+    }
+
+    // Trialing users get full Pro access regardless of plan
+    if (activeSub.status === "trialing") {
       plan = "pro";
     }
 

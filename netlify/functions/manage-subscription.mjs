@@ -18,7 +18,7 @@ export default async function handler(req) {
     const customers = await stripe.customers.list({ email, limit: 1 });
 
     if (customers.data.length === 0) {
-      return Response.json({ error: "No customer found" }, { status: 404 });
+      return Response.json({ error: "no_customer", redirect: "pricing" }, { status: 404 });
     }
 
     // Create billing portal session

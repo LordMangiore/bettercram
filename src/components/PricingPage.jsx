@@ -5,7 +5,7 @@ const PLANS = [
   {
     id: "starter",
     name: "Starter",
-    price: 9,
+    price: 12,
     interval: "month",
     priceKey: "starter_monthly",
     features: [
@@ -26,7 +26,7 @@ const PLANS = [
   {
     id: "pro_monthly",
     name: "Pro",
-    price: 19,
+    price: 25,
     interval: "month",
     priceKey: "pro_monthly",
     popular: true,
@@ -46,10 +46,10 @@ const PLANS = [
   {
     id: "pro_yearly",
     name: "Pro Annual",
-    price: 149,
+    price: 225,
     interval: "year",
     priceKey: "pro_yearly",
-    savings: "Save $79/yr",
+    savings: "Save $75/yr",
     features: [
       "Everything in Pro",
       "2+ months free",

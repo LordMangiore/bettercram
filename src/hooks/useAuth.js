@@ -36,9 +36,16 @@ export function useAuth() {
     const hash = window.location.hash;
     if (!hash.includes("access_token")) return false;
 
-    const params = new URLSearchParams(hash.substring(1));
+    // Immediately clean URL to prevent double-processing
+    const savedHash = hash;
+    window.history.replaceState(null, "", window.location.pathname);
+
+    const params = new URLSearchParams(savedHash.substring(1));
     const token = params.get("access_token");
     if (!token) return false;
+
+    // Skip if we already have this token
+    if (token === localStorage.getItem("mcat-access-token")) return false;
 
     // Get user info
     try {
@@ -59,8 +66,6 @@ export function useAuth() {
       localStorage.setItem("mcat-user", JSON.stringify(userData));
       localStorage.setItem("mcat-access-token", token);
 
-      // Clean URL
-      window.history.replaceState(null, "", window.location.pathname);
       return true;
     } catch (e) {
       console.error("Failed to get user info:", e);

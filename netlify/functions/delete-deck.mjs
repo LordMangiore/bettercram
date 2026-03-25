@@ -6,15 +6,7 @@ export default async function handler(req) {
   }
 
   try {
-    const auth = req.headers.get("authorization") || "";
-    const token = auth.replace("Bearer ", "");
-    let userId = "default";
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        userId = payload.sub || "default";
-      } catch {}
-    }
+    const userId = req.headers.get("x-user-id") || "default";
 
     const { deckId } = await req.json();
     if (!deckId) {

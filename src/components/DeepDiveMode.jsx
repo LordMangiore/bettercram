@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { deepDive } from "../api";
 
-export default function DeepDiveMode({ cards }) {
+export default function DeepDiveMode({ cards, deckName }) {
   const [selectedCard, setSelectedCard] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -13,7 +13,7 @@ export default function DeepDiveMode({ cards }) {
     setResult(null);
     setSources([]);
     try {
-      const { content, sources: s } = await deepDive(card);
+      const { content, sources: s } = await deepDive(card, null, deckName);
       setResult(content);
       setSources(s || []);
     } catch (e) {

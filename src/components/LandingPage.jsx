@@ -3,28 +3,38 @@ import { useState, useEffect, useRef } from "react";
 function AnimatedCounter({ target, duration = 2000 }) {
   const [count, setCount] = useState(0);
   const ref = useRef(null);
-  const started = useRef(false);
+  const prevTarget = useRef(0);
 
   useEffect(() => {
+    if (target === prevTarget.current) return;
+    const from = prevTarget.current;
+    prevTarget.current = target;
+
+    const animate = () => {
+      const start = Date.now();
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setCount(Math.floor(from + eased * (target - from)));
+        if (progress < 1) requestAnimationFrame(tick);
+      };
+      tick();
+    };
+
+    // If element is visible, animate immediately. Otherwise wait for intersection.
+    if (!ref.current) { animate(); return; }
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !started.current) {
-        started.current = true;
-        const start = Date.now();
-        const tick = () => {
-          const elapsed = Date.now() - start;
-          const progress = Math.min(elapsed / duration, 1);
-          const eased = 1 - Math.pow(1 - progress, 3);
-          setCount(Math.floor(eased * target));
-          if (progress < 1) requestAnimationFrame(tick);
-        };
-        tick();
+      if (entry.isIntersecting) {
+        observer.disconnect();
+        animate();
       }
     });
-    if (ref.current) observer.observe(ref.current);
+    observer.observe(ref.current);
     return () => observer.disconnect();
   }, [target, duration]);
 
-  return <span ref={ref}>{count}</span>;
+  return <span ref={ref}>{count.toLocaleString()}</span>;
 }
 
 function DemoCard() {
@@ -49,15 +59,15 @@ function DemoCard() {
         }}
       >
         <div
-          className="absolute inset-0 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-6 flex flex-col justify-between shadow-2xl shadow-indigo-500/20"
+          className="absolute inset-0 bg-indigo-900 rounded-2xl border border-indigo-700 p-6 flex flex-col justify-between shadow-2xl shadow-indigo-500/30"
           style={{ backfaceVisibility: "hidden" }}
         >
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-indigo-300 bg-indigo-500/20 px-2 py-1 rounded-full">
+              <span className="text-xs font-medium text-indigo-200 bg-indigo-500/30 px-2 py-1 rounded-full">
                 Biology
               </span>
-              <span className="text-xs font-medium text-yellow-300 bg-yellow-500/20 px-2 py-1 rounded-full">
+              <span className="text-xs font-medium text-yellow-200 bg-yellow-500/30 px-2 py-1 rounded-full">
                 medium
               </span>
             </div>
@@ -65,26 +75,26 @@ function DemoCard() {
               What role does calcium play in skeletal muscle contraction?
             </p>
           </div>
-          <p className="text-xs text-white/40 text-center">
+          <p className="text-xs text-indigo-300/60 text-center">
             <i className="fa-solid fa-hand-pointer mr-1" /> Tap to flip
           </p>
         </div>
         <div
-          className="absolute inset-0 bg-indigo-600/20 backdrop-blur-md rounded-2xl border border-indigo-400/30 p-6 flex flex-col justify-between shadow-2xl shadow-indigo-500/20"
+          className="absolute inset-0 bg-indigo-800 rounded-2xl border border-indigo-600 p-6 flex flex-col justify-between shadow-2xl shadow-indigo-500/30"
           style={{
             backfaceVisibility: "hidden",
             transform: "rotateY(180deg)",
           }}
         >
           <div>
-            <span className="text-xs font-medium text-indigo-300 bg-indigo-500/20 px-2 py-1 rounded-full">
+            <span className="text-xs font-medium text-indigo-200 bg-indigo-500/30 px-2 py-1 rounded-full">
               Answer
             </span>
             <p className="text-white text-sm leading-relaxed mt-3">
               Calcium binds troponin, which moves tropomyosin to expose actin binding sites, allowing myosin cross-bridges to form and produce contraction.
             </p>
           </div>
-          <p className="text-xs text-white/40 text-center">
+          <p className="text-xs text-indigo-300/60 text-center">
             <i className="fa-solid fa-hand-pointer mr-1" /> Tap to flip
           </p>
         </div>
@@ -131,11 +141,19 @@ function TypeWriter({ texts, speed = 50, pause = 2000 }) {
   );
 }
 
-export default function LandingPage({ onLogin, dark, setDark }) {
+export default function LandingPage({ onLogin, dark, setDark, setPage }) {
   const [visible, setVisible] = useState(false);
+  const [stats, setStats] = useState({ totalCards: 1058, totalDecks: 4 });
 
   useEffect(() => {
     setTimeout(() => setVisible(true), 100);
+    // Fetch real community stats
+    fetch("/.netlify/functions/community-stats")
+      .then(r => r.json())
+      .then(data => {
+        if (data.totalCards > 0) setStats(data);
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -201,19 +219,19 @@ export default function LandingPage({ onLogin, dark, setDark }) {
                 Powered by Claude, ElevenLabs & Firecrawl
               </div>
 
-              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">
-                Study smarter,
+              <h2 className="text-3xl sm:text-5xl lg:text-6xl font-bold leading-tight">
+                Stop memorizing.
                 <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
                   <TypeWriter
-                    texts={["not harder.", "with AI.", "your way.", "anywhere."]}
+                    texts={["Start learning.", "Talk to your notes.", "Get tested.", "Learn for real."]}
                   />
                 </span>
               </h2>
 
               <p className={`text-lg max-w-lg ${dark ? "text-gray-400" : "text-gray-600"}`}>
-                Turn any Google Doc into AI-powered flashcards with deep explanations,
-                audio lessons, quizzes, and an AI tutor — all in one place.
+                Turn any document into a complete AI study system — flashcards, voice tutor,
+                audio lessons, quizzes, and deep research. Powered by Nova, your personal AI tutor.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
@@ -235,21 +253,21 @@ export default function LandingPage({ onLogin, dark, setDark }) {
               <div className="flex gap-8 pt-4">
                 <div>
                   <p className={`text-3xl font-bold ${dark ? "text-white" : "text-gray-900"}`}>
-                    <AnimatedCounter target={817} />
+                    <AnimatedCounter target={stats.totalCards} />+
                   </p>
-                  <p className={`text-xs uppercase tracking-wider ${dark ? "text-gray-500" : "text-gray-400"}`}>Cards Ready</p>
+                  <p className={`text-xs uppercase tracking-wider ${dark ? "text-gray-500" : "text-gray-400"}`}>Community Cards</p>
                 </div>
                 <div>
                   <p className={`text-3xl font-bold ${dark ? "text-white" : "text-gray-900"}`}>
-                    <AnimatedCounter target={7} duration={1000} />
+                    <AnimatedCounter target={stats.totalDecks} duration={1000} />
+                  </p>
+                  <p className={`text-xs uppercase tracking-wider ${dark ? "text-gray-500" : "text-gray-400"}`}>Shared Decks</p>
+                </div>
+                <div>
+                  <p className={`text-3xl font-bold ${dark ? "text-white" : "text-gray-900"}`}>
+                    <AnimatedCounter target={7} duration={800} />
                   </p>
                   <p className={`text-xs uppercase tracking-wider ${dark ? "text-gray-500" : "text-gray-400"}`}>Study Modes</p>
-                </div>
-                <div>
-                  <p className={`text-3xl font-bold ${dark ? "text-white" : "text-gray-900"}`}>
-                    <AnimatedCounter target={3} duration={800} />
-                  </p>
-                  <p className={`text-xs uppercase tracking-wider ${dark ? "text-gray-500" : "text-gray-400"}`}>AI Engines</p>
                 </div>
               </div>
             </div>
@@ -287,15 +305,15 @@ export default function LandingPage({ onLogin, dark, setDark }) {
               {
                 step: "3",
                 icon: "fa-solid fa-rocket",
-                title: "Study 6 ways",
-                desc: "Flash cards, quizzes, AI tutor, audio, research, mnemonics",
+                title: "Study 7 ways",
+                desc: "Flash cards, quizzes, voice tutor, audio lessons, and community-shared decks",
               },
             ].map((item) => (
               <div
                 key={item.step}
                 className={`relative rounded-2xl p-6 transition-all group ${dark ? "bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20" : "bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200"}`}
               >
-                <div className="absolute -top-3 -left-3 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-bold shadow-lg shadow-indigo-600/30">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg shadow-indigo-600/30">
                   {item.step}
                 </div>
                 <i className={`${item.icon} text-3xl text-indigo-400 mb-4 block group-hover:scale-110 transition-transform`} />
@@ -315,12 +333,12 @@ export default function LandingPage({ onLogin, dark, setDark }) {
           </h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
-              { icon: "fa-clone", label: "Flip Cards", desc: "Swipe, shuffle, keyboard nav — study at your pace", color: "text-blue-500" },
-              { icon: "fa-graduation-cap", label: "AI Tutor", desc: "Claude explains any concept in depth, on demand", color: "text-purple-500", pro: true },
-              { icon: "fa-circle-question", label: "Smart Quizzes", desc: "Auto-generated MCQs with explanations", color: "text-green-500" },
-              { icon: "fa-microscope", label: "Deep Dive Research", desc: "Firecrawl searches the web, Claude synthesizes", color: "text-orange-500", pro: true },
-              { icon: "fa-headphones", label: "Audio Study", desc: "Podcast-style lessons narrated by ElevenLabs", color: "text-pink-500", pro: true },
-              { icon: "fa-headset", label: "Voice Tutor", desc: "Real-time voice conversation with an AI study partner", color: "text-cyan-500", pro: true },
+              { icon: "fa-clone", label: "Flip Cards", desc: "3D flip animation, swipe, shuffle, keyboard nav — study at your pace", color: "text-blue-500" },
+              { icon: "fa-headset", label: "Nova Voice Tutor", desc: "Talk to Nova — your AI tutor who knows your deck and quizzes you in real time", color: "text-cyan-500", pro: true },
+              { icon: "fa-circle-question", label: "Smart Quizzes", desc: "Auto-generated multiple choice questions with detailed explanations", color: "text-green-500" },
+              { icon: "fa-graduation-cap", label: "AI Tutor", desc: "Deep explanations, mnemonics, and follow-up chat on any card", color: "text-purple-500", pro: true },
+              { icon: "fa-globe", label: "Community Decks", desc: "Browse and share study decks with other students — thousands of cards, zero effort", color: "text-emerald-500" },
+              { icon: "fa-headphones", label: "Audio Lessons", desc: "Podcast-style study sessions with live script tracking — learn hands-free", color: "text-pink-500", pro: true },
             ].map((f) => (
               <div
                 key={f.label}
@@ -354,7 +372,7 @@ export default function LandingPage({ onLogin, dark, setDark }) {
             <div className={`rounded-2xl p-6 flex flex-col ${dark ? "bg-white/5 border border-white/10" : "bg-white border border-gray-200 shadow-sm"}`}>
               <h4 className={`text-xl font-bold mb-1 ${dark ? "" : "text-gray-900"}`}>Starter</h4>
               <div className="mb-4">
-                <span className={`text-4xl font-bold ${dark ? "" : "text-gray-900"}`}>$9</span>
+                <span className={`text-4xl font-bold ${dark ? "" : "text-gray-900"}`}>$12</span>
                 <span className={`text-sm ${dark ? "text-gray-400" : "text-gray-500"}`}>/month</span>
               </div>
               <ul className={`space-y-2 flex-1 mb-6 text-sm ${dark ? "text-gray-300" : "text-gray-600"}`}>
@@ -381,17 +399,17 @@ export default function LandingPage({ onLogin, dark, setDark }) {
               </div>
               <h4 className="text-xl font-bold mb-1">Pro</h4>
               <div className="mb-4">
-                <span className="text-4xl font-bold">$19</span>
+                <span className="text-4xl font-bold">$25</span>
                 <span className="text-sm text-indigo-200">/month</span>
               </div>
               <ul className="space-y-2 flex-1 mb-6 text-sm text-indigo-100">
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />Everything in Starter</li>
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />AI Tutor — deep explanations</li>
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />Voice Tutor — live conversation</li>
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />Audio study sessions</li>
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />Deep dive research</li>
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />Multiple doc library</li>
-                <li><i className="fa-solid fa-check text-indigo-300 mr-2" />Study planner</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />Everything in Starter</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />Nova — AI voice tutor</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />AI Tutor — deep explanations</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />Audio study sessions</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />Deep dive research</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />Unlimited doc library</li>
+                <li><i className="fa-solid fa-check text-green-400 mr-2" />Study planner</li>
               </ul>
               <button
                 onClick={onLogin}
@@ -404,16 +422,16 @@ export default function LandingPage({ onLogin, dark, setDark }) {
             {/* Pro Yearly */}
             <div className={`relative rounded-2xl p-6 flex flex-col ${dark ? "bg-white/5 border border-white/10" : "bg-white border border-gray-200 shadow-sm"}`}>
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-green-400 text-green-900 text-xs font-bold rounded-full">
-                SAVE $79/YR
+                SAVE $75/YR
               </div>
               <h4 className={`text-xl font-bold mb-1 ${dark ? "" : "text-gray-900"}`}>Pro Annual</h4>
               <div className="mb-4">
-                <span className={`text-4xl font-bold ${dark ? "" : "text-gray-900"}`}>$149</span>
+                <span className={`text-4xl font-bold ${dark ? "" : "text-gray-900"}`}>$225</span>
                 <span className={`text-sm ${dark ? "text-gray-400" : "text-gray-500"}`}>/year</span>
               </div>
               <ul className={`space-y-2 flex-1 mb-6 text-sm ${dark ? "text-gray-300" : "text-gray-600"}`}>
                 <li><i className="fa-solid fa-check text-green-500 mr-2" />Everything in Pro</li>
-                <li><i className="fa-solid fa-check text-green-500 mr-2" />2+ months free</li>
+                <li><i className="fa-solid fa-check text-green-500 mr-2" />3 months free</li>
                 <li><i className="fa-solid fa-check text-green-500 mr-2" />Lock in your rate</li>
               </ul>
               <button
@@ -436,7 +454,7 @@ export default function LandingPage({ onLogin, dark, setDark }) {
             Ready to ace your next exam?
           </h3>
           <p className={`mb-8 max-w-md mx-auto ${dark ? "text-gray-400" : "text-gray-600"}`}>
-            7 study modes powered by 3 AI engines. Your flashcards are waiting.
+            {stats.totalCards.toLocaleString()}+ community cards. 7 study modes. Nova, your AI voice tutor. All free for 7 days.
           </p>
           <button
             onClick={onLogin}
@@ -449,13 +467,35 @@ export default function LandingPage({ onLogin, dark, setDark }) {
         </section>
 
         {/* Footer */}
-        <footer className={`border-t py-8 text-center text-sm ${dark ? "border-white/10 text-gray-500" : "border-gray-200 text-gray-400"}`}>
-          <div className="flex items-center justify-center gap-6">
-            <span>
-              <i className="fa-solid fa-bolt text-indigo-500 mr-1" />
-              BetterCram
-            </span>
-            <span>Built with Claude, ElevenLabs & Firecrawl</span>
+        <footer className={`border-t py-8 text-sm ${dark ? "border-white/10 text-gray-500" : "border-gray-200 text-gray-400"}`}>
+          <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-6">
+              <span>
+                <i className="fa-solid fa-bolt text-indigo-500 mr-1" />
+                BetterCram
+              </span>
+              <span className="hidden sm:inline">Built with Claude, ElevenLabs &amp; Firecrawl</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setPage("privacy")}
+                className={`hover:underline transition-colors ${dark ? "hover:text-white" : "hover:text-gray-900"}`}
+              >
+                Privacy
+              </button>
+              <button
+                onClick={() => setPage("terms")}
+                className={`hover:underline transition-colors ${dark ? "hover:text-white" : "hover:text-gray-900"}`}
+              >
+                Terms
+              </button>
+              <button
+                onClick={() => setPage("contact")}
+                className={`hover:underline transition-colors ${dark ? "hover:text-white" : "hover:text-gray-900"}`}
+              >
+                Contact
+              </button>
+            </div>
           </div>
         </footer>
       </div>

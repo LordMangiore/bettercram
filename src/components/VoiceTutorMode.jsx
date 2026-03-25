@@ -3,7 +3,17 @@ import { useConversation } from "@11labs/react";
 
 const AGENT_ID = "agent_3101kmc104q3f1ksrtqgzwhxjj1v";
 
-export default function VoiceTutorMode({ cards }) {
+function buildDeckContext(cards, maxCards = 50) {
+  // Build a condensed study guide from the deck's cards
+  const sample = cards.slice(0, maxCards);
+  const categories = [...new Set(sample.map(c => c.category))].join(", ");
+  const cardList = sample
+    .map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`)
+    .join("\n\n");
+  return { categories, cardList, total: cards.length };
+}
+
+export default function VoiceTutorMode({ cards, deckName }) {
   const [status, setStatus] = useState("idle"); // idle | connecting | connected | error
   const [messages, setMessages] = useState([]);
   const [currentCard, setCurrentCard] = useState(null);
@@ -35,26 +45,57 @@ export default function VoiceTutorMode({ cards }) {
         setCurrentCard(card);
         setMessages([]);
         setErrorMsg("");
+        if (window.plausible) window.plausible("Voice Tutor Started");
 
         // Request microphone permission
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // Build context from the selected card
-        const overrides = {};
+        // Build dynamic context from current deck + optional card
+        const { categories, cardList, total } = buildDeckContext(cards);
+
+        let systemPrompt, firstMsg;
+
         if (card) {
-          overrides.agent = {
-            prompt: {
-              prompt: `You are an expert study tutor. The student is currently studying this flashcard:
+          systemPrompt = `You are an expert study tutor helping a student with their ${deckName || "study"} deck. The student is currently studying this flashcard:
 
 Question: ${card.front}
 Answer: ${card.back}
 Category: ${card.category}
 
-Start by asking the student what they know about this topic. Use the Socratic method - ask probing questions before giving answers. Keep responses concise and conversational. Be encouraging but honest when answers are wrong. Highlight common exam traps and misconceptions.`,
-            },
-            firstMessage: `Hey! I see you're studying ${card.category}. Let me ask you - ${card.front.length > 100 ? "what do you know about this concept?" : card.front}`,
-          };
+You also have access to their full study deck (${total} cards) covering: ${categories}. Here are some cards for context:
+
+${cardList}
+
+Start by asking the student what they know about the current topic. Use the Socratic method - ask probing questions before giving answers. Keep responses concise and conversational (you're speaking, not writing). Be encouraging but honest when answers are wrong. Highlight common exam traps and misconceptions.`;
+          firstMsg = `Hey! I see you're studying ${card.category}. Let me ask you - ${card.front.length > 100 ? "what do you know about this concept?" : card.front}`;
+        } else {
+          systemPrompt = `You are an expert study tutor helping a student with their ${deckName || "study"} deck. Their deck has ${total} cards covering: ${categories}.
+
+Here are the study cards you should use to quiz and teach them:
+
+${cardList}
+
+Your role:
+- Quiz the student on these topics using the Socratic method
+- Ask questions from the cards above, then evaluate their answers
+- Explain concepts clearly using analogies
+- Highlight common exam traps and misconceptions
+- Keep responses concise and conversational (you're speaking, not writing)
+- Be encouraging but honest when answers are wrong
+
+Start by asking what topic they want to focus on, or pick a random question from their deck to quiz them.`;
+          firstMsg = `Hey! I'm your study tutor for ${deckName || "this deck"}. I've got ${total} cards covering ${categories}. What topic do you want to work on, or should I quiz you on something random?`;
         }
+
+        const overrides = {
+          agent: {
+            prompt: { prompt: systemPrompt },
+            firstMessage: firstMsg,
+          },
+          dynamicVariables: {
+            deck_name: deckName || "your study deck",
+          },
+        };
 
         await conversation.startSession({
           agentId: AGENT_ID,
@@ -203,7 +244,7 @@ Start by asking the student what they know about this topic. Use the Socratic me
             <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
               Or pick a specific card to discuss
             </h3>
-            <div className="max-h-64 overflow-y-auto space-y-2 scrollbar-hide">
+            <div className="max-h-64 overflow-y-auto space-y-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {cards.slice(0, 50).map((card, i) => (
                 <button
                   key={i}

@@ -1,10 +1,12 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useAuth } from "./hooks/useAuth";
-import { saveCards, loadCards, setAuthToken, generateMore, scrapeDocument, saveStudyPlan, loadStudyPlan, checkSubscription, manageSubscription, loadDecks, saveDeck, deleteDeck as apiDeleteDeck, seedSampleDecks, resetAccount } from "./api";
+import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scrapeDocument, saveStudyPlan, loadStudyPlan, checkSubscription, manageSubscription, loadDecks, loadDeck, saveDeck, deleteDeck as apiDeleteDeck, seedSampleDecks, resetAccount, precacheFirstPodcast, subscribeToDeck } from "./api";
 import PricingPage from "./components/PricingPage";
 import DeckLibrary from "./components/DeckLibrary";
+import InstallPrompt from "./components/InstallPrompt";
+import NotificationSettings from "./components/NotificationSettings";
 import SetupScreen from "./components/SetupScreen";
 import FlipMode from "./components/FlipMode";
 import StudyMode from "./components/StudyMode";
@@ -16,6 +18,9 @@ import VoiceTutorMode from "./components/VoiceTutorMode";
 import CardManager from "./components/CardManager";
 import PlannerMode from "./components/PlannerMode";
 import LandingPage from "./components/LandingPage";
+import PrivacyPolicy from "./components/PrivacyPolicy";
+import TermsOfService from "./components/TermsOfService";
+import ContactPage from "./components/ContactPage";
 
 function ensureCardIds(cards) {
   return cards.map((c, i) =>
@@ -71,22 +76,35 @@ const MODES = [
 // These modes are accessed from the user menu
 const MENU_MODES = ["library", "manage", "planner"];
 
+// Plausible analytics helper
+function trackEvent(name, props) {
+  if (window.plausible) {
+    window.plausible(name, props ? { props } : undefined);
+  }
+}
+
 export default function App() {
   const [cards, setCards] = useLocalStorage("mcat-cards", []);
   const [progress, setProgress] = useLocalStorage("mcat-progress", {});
   const [mode, setMode] = useState("flip");
   const [activeCategory, setActiveCategory] = useState("All");
   const [showSetup, setShowSetup] = useState(false);
+  const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dark, setDark] = useDarkMode();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
   const [studyPlan, setStudyPlan] = useLocalStorage("mcat-study-plan", null);
   const [subscription, setSubscription] = useLocalStorage("bc-subscription", null);
   const [showPricing, setShowPricing] = useState(false);
   const [decks, setDecks] = useState([]);
   const [activeDeckId, setActiveDeckId] = useLocalStorage("bc-active-deck", null);
+  const [autoSeeding, setAutoSeeding] = useState(false);
+  const [hasEverLoadedDecks, setHasEverLoadedDecks] = useState(false);
+  const [generatingStatus, setGeneratingStatus] = useState("");
   const { user, accessToken, login, logout, handleCallback } = useAuth();
 
   // Handle Google OAuth callback
@@ -94,10 +112,15 @@ export default function App() {
     handleCallback();
   }, [handleCallback]);
 
-  // Set auth token for API calls when user changes
+  // Set auth token and user ID for API calls when user changes
   useEffect(() => {
     setAuthToken(accessToken);
-  }, [accessToken]);
+    if (user?.id) {
+      setUserId(user.id);
+      console.log("Auth set: userId =", user.id);
+    }
+  }, [accessToken, user?.id]);
+
 
   // Check subscription status
   useEffect(() => {
@@ -114,10 +137,14 @@ export default function App() {
   const isPro = subscription?.active && subscription?.plan === "pro";
 
   function handleModeChange(modeId) {
+    trackEvent("Mode Switch", { mode: modeId });
     if (PRO_MODES.includes(modeId) && !isPro) {
+      trackEvent("Paywall Hit", { mode: modeId });
       setShowPricing(true);
       return;
     }
+    // Stop any playing audio when switching modes
+    window.dispatchEvent(new CustomEvent("bc-stop-audio"));
     setMode(modeId);
   }
 
@@ -129,6 +156,10 @@ export default function App() {
     }
 
     async function initDecks() {
+      // Ensure userId is set before any API calls
+      if (user?.id) setUserId(user.id);
+      if (accessToken) setAuthToken(accessToken);
+
       try {
         // Load study plan
         try {
@@ -140,13 +171,20 @@ export default function App() {
 
         if (d && d.length > 0) {
           setDecks(d);
-          const targetId = activeDeckId || d[0].id;
+          setHasEverLoadedDecks(true);
+          // Use saved active deck if it exists in the loaded list, otherwise first deck
+          const savedExists = activeDeckId && d.some(dk => dk.id === activeDeckId);
+          const targetId = savedExists ? activeDeckId : d[0].id;
           setActiveDeckId(targetId);
-          // Load the active deck's cards
-          const active = d.find(dk => dk.id === targetId);
-          if (active?.cards?.length > 0) {
-            setCards(ensureCardIds(active.cards));
-            setProgress(active.progress || {});
+          // Load the active deck's full cards
+          try {
+            const { deck: fullDeck } = await loadDeck(targetId);
+            if (fullDeck?.cards?.length > 0) {
+              setCards(ensureCardIds(fullDeck.cards));
+              setProgress(fullDeck.progress || {});
+            }
+          } catch (e) {
+            console.log("Failed to load active deck cards:", e);
           }
         } else {
           // No decks — try migrating old cards
@@ -168,20 +206,8 @@ export default function App() {
               setProgress(data.progress || {});
             }
           } catch {
-            // No old cards — seed sample decks for new users
-            try {
-              await seedSampleDecks();
-              const { decks: seeded } = await loadDecks();
-              if (seeded?.length > 0) {
-                setDecks(seeded);
-                setActiveDeckId(seeded[0].id);
-                if (seeded[0].cards?.length > 0) {
-                  setCards(ensureCardIds(seeded[0].cards));
-                }
-              }
-            } catch {
-              console.log("Sample deck seeding skipped");
-            }
+            // No old cards — autoSeedEffect will handle seeding for new users
+            console.log("No legacy cards found, auto-seed will handle new user setup");
           }
         }
       } catch (err) {
@@ -196,6 +222,7 @@ export default function App() {
 
   // Deck management
   async function handleCreateDeck(name, docUrl) {
+    trackEvent("Deck Created", { hasDoc: !!docUrl, name });
     const deckId = "deck-" + Date.now();
     const deck = {
       name,
@@ -206,35 +233,78 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
 
-    // If docUrl provided, generate cards from it
-    if (docUrl) {
-      const result = await scrapeDocument(docUrl);
-      if (result.content) {
-        // We'll save with empty cards for now, user can generate from setup
-        deck.docUrl = docUrl;
-      }
-    }
-
+    // Save the empty deck first
     await saveDeck(deckId, deck);
     setDecks(prev => [...prev, { id: deckId, ...deck }]);
     setActiveDeckId(deckId);
     setCards([]);
     setProgress({});
-    setMode("flip");
 
-    // If no doc URL, go to manage mode to add cards manually
-    if (!docUrl) {
-      setMode("manage");
+    if (docUrl) {
+      // Generate cards from the doc directly
+      setGenerating(true);
+      setGeneratingStatus("Scraping document with Firecrawl...");
+      try {
+        const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
+        if (!result.content || result.content.trim().length < 50) {
+          throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
+        }
+
+        setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
+
+        // Chunk and generate
+        const chunkSize = 8000;
+        const chunks = [];
+        for (let i = 0; i < result.content.length; i += chunkSize) {
+          chunks.push(result.content.slice(i, i + chunkSize));
+        }
+
+        let allCards = [];
+        const PARALLEL = 5;
+        const totalBatches = Math.ceil(chunks.length / PARALLEL);
+        for (let i = 0; i < chunks.length; i += PARALLEL) {
+          const batchNum = Math.floor(i / PARALLEL) + 1;
+          setGeneratingStatus(`Generating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
+          const batch = chunks.slice(i, i + PARALLEL);
+          const results = await Promise.all(
+            batch.map(chunk => generateCards(chunk, null))
+          );
+          for (const { cards: c } of results) {
+            allCards = allCards.concat(c);
+          }
+        }
+
+        const withIds = ensureCardIds(allCards);
+        const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, docUrl };
+        await saveDeck(deckId, updatedDeck);
+        setDecks(prev => prev.map(d => d.id === deckId ? { id: deckId, ...updatedDeck } : d));
+        setCards(withIds);
+        setGeneratingStatus(`Done! ${withIds.length} cards generated.`);
+        setMode("flip");
+
+        // Fire-and-forget: precache first card's podcast so Audio mode has something ready
+        if (withIds.length > 0) {
+          precacheFirstPodcast(withIds[0]);
+        }
+      } catch (e) {
+        console.error("Failed to generate cards:", e);
+        alert("Failed to generate cards: " + e.message + "\nYou can add cards manually.");
+        setMode("manage");
+      } finally {
+        setGenerating(false);
+        setTimeout(() => setGeneratingStatus(""), 3000);
+      }
     } else {
-      setShowSetup(true);
+      // No doc URL — go to manage mode to add cards manually
+      setMode("manage");
     }
   }
 
   async function handleDeleteDeck(deckId) {
     await apiDeleteDeck(deckId);
-    setDecks(prev => prev.filter(d => d.id !== deckId));
+    const remaining = decks.filter(d => d.id !== deckId);
+    setDecks(remaining);
     if (activeDeckId === deckId) {
-      const remaining = decks.filter(d => d.id !== deckId);
       if (remaining.length > 0) {
         handleSelectDeck(remaining[0].id);
       } else {
@@ -245,7 +315,7 @@ export default function App() {
     }
   }
 
-  async function handleSelectDeck(deckId) {
+  async function handleSelectDeck(deckId, { switchMode = true } = {}) {
     // Save current deck state first
     if (activeDeckId && cards.length > 0) {
       const currentDeck = decks.find(d => d.id === activeDeckId);
@@ -261,32 +331,21 @@ export default function App() {
     }
 
     setActiveDeckId(deckId);
+    setCards([]);
+    setProgress({});
 
-    // Load the selected deck's cards
-    const store = decks.find(d => d.id === deckId);
-    if (store?.cards && store.cards.length > 0) {
-      setCards(ensureCardIds(store.cards));
-      setProgress(store.progress || {});
-    } else {
-      // Try loading from server
-      try {
-        const { decks: freshDecks } = await loadDecks();
-        const freshDeck = freshDecks.find(d => d.id === deckId);
-        if (freshDeck?.cards && freshDeck.cards.length > 0) {
-          setCards(ensureCardIds(freshDeck.cards));
-          setProgress(freshDeck.progress || {});
-          setDecks(freshDecks);
-        } else {
-          setCards([]);
-          setProgress({});
-        }
-      } catch {
-        setCards([]);
-        setProgress({});
+    // Load the selected deck's full cards from server
+    try {
+      const { deck: fullDeck } = await loadDeck(deckId);
+      if (fullDeck?.cards?.length > 0) {
+        setCards(ensureCardIds(fullDeck.cards));
+        setProgress(fullDeck.progress || {});
       }
+    } catch {
+      console.log("Failed to load deck cards");
     }
 
-    setMode("flip");
+    if (switchMode) setMode("flip");
     setActiveCategory("All");
     setSearchQuery("");
   }
@@ -339,33 +398,51 @@ export default function App() {
     return counts;
   }, [cards]);
 
+  async function saveToDeck(updatedCards, updatedProgress) {
+    if (!activeDeckId) return;
+    const currentDeck = decks.find(d => d.id === activeDeckId);
+    if (!currentDeck) return;
+    try {
+      await saveDeck(activeDeckId, {
+        ...currentDeck,
+        cards: updatedCards || cards,
+        progress: updatedProgress || progress,
+        cardCount: (updatedCards || cards).length,
+        lastStudied: new Date().toISOString(),
+      });
+      setDecks(prev => prev.map(d =>
+        d.id === activeDeckId ? { ...d, cards: updatedCards || cards, cardCount: (updatedCards || cards).length, lastStudied: new Date().toISOString() } : d
+      ));
+    } catch (e) {
+      console.error("Failed to save to deck:", e);
+    }
+  }
+
   async function handleCardsGenerated(newCards) {
     const withIds = ensureCardIds(newCards);
     setCards(withIds);
     setShowSetup(false);
-    try {
-      await saveCards(withIds, null);
-    } catch (e) {
-      console.error("Failed to save cards to server:", e);
-    }
+    await saveToDeck(withIds, progress);
+    // Precache first podcast in background
+    if (withIds.length > 0) precacheFirstPodcast(withIds[0]);
   }
 
   async function handleAddCard(newCard) {
     const updated = [...cards, newCard];
     setCards(updated);
-    try { await saveCards(updated, null); } catch (e) { console.error(e); }
+    await saveToDeck(updated);
   }
 
   async function handleEditCard(cardId, updatedCard) {
     const updated = cards.map((c) => c.id === cardId ? updatedCard : c);
     setCards(updated);
-    try { await saveCards(updated, null); } catch (e) { console.error(e); }
+    await saveToDeck(updated);
   }
 
   async function handleDeleteCard(cardId) {
     const updated = cards.filter((c) => c.id !== cardId);
     setCards(updated);
-    try { await saveCards(updated, null); } catch (e) { console.error(e); }
+    await saveToDeck(updated);
   }
 
   function handleUpdateStudyPlan(plan) {
@@ -379,10 +456,10 @@ export default function App() {
   function handleUpdateProgress(key, value) {
     setProgress((prev) => {
       const updated = { ...prev, [key]: value };
-      // Debounced save to server
+      // Debounced save to deck
       clearTimeout(window._progressSaveTimer);
       window._progressSaveTimer = setTimeout(() => {
-        saveCards(null, updated).catch(() => {});
+        saveToDeck(null, updated).catch(() => {});
       }, 2000);
       return updated;
     });
@@ -391,69 +468,139 @@ export default function App() {
   const [generating, setGenerating] = useState(false);
 
   async function handleGenerateMore() {
+    const docUrl = activeDeck?.docUrl;
+    if (!docUrl) {
+      alert("No document URL linked to this deck. Edit the deck to add one, or add cards manually.");
+      return;
+    }
     setGenerating(true);
+    setGeneratingStatus("Scraping document for new content...");
     try {
-      const docUrl = "https://docs.google.com/document/d/1p7X3_n9K8sra6fYNUQgYeXcLJi3h9Uh3gGfGgV2N-K8/edit";
-      const docId = "1p7X3_n9K8sra6fYNUQgYeXcLJi3h9Uh3gGfGgV2N-K8";
+      // Ensure we have the active deck's cards loaded (not stale global state)
+      let currentCards = cards;
+      if (activeDeckId && currentCards.length === 0) {
+        try {
+          const { deck: fullDeck } = await loadDeck(activeDeckId);
+          if (fullDeck?.cards?.length > 0) {
+            currentCards = ensureCardIds(fullDeck.cards);
+            setCards(currentCards);
+          }
+        } catch (e) {
+          console.log("Failed to load deck cards for generateMore:", e);
+        }
+      }
 
-      let content = "";
-      const result = await scrapeDocument(docUrl);
-      content = result.content;
+      const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
+      const content = result.content;
 
-      const { cards: newCards } = await generateMore(cards, content);
+      setGeneratingStatus(`Document scraped. Analyzing ${currentCards.length} existing cards and finding gaps...`);
+      const { cards: newCards } = await generateMore(currentCards, content);
       if (newCards && newCards.length > 0) {
-        const merged = [...cards, ...newCards];
+        const merged = [...currentCards, ...ensureCardIds(newCards)];
         setCards(merged);
-        await saveCards(merged, null);
+        await saveToDeck(merged);
+        setGeneratingStatus(`Added ${newCards.length} new cards! Total: ${merged.length}`);
+      } else {
+        setGeneratingStatus("No new cards found — your deck already covers the document well!");
       }
     } catch (e) {
       console.error("Generate more failed:", e);
+      alert("Failed to generate more cards: " + e.message);
     } finally {
       setGenerating(false);
+      setTimeout(() => setGeneratingStatus(""), 5000);
     }
+  }
+
+  // Auto-subscribe new users to onboarding deck (no seed needed)
+  const ONBOARDING_DECK_ID = "117269723779356752591-deck-onboarding";
+  const subscribingRef = useRef(false);
+  useEffect(() => {
+    if (decks.length === 0 && !loading && user?.id && !autoSeeding && !hasEverLoadedDecks && !subscribingRef.current) {
+      subscribingRef.current = true;
+      setAutoSeeding(true);
+      (async () => {
+        try {
+          if (user?.id) setUserId(user.id);
+          if (accessToken) setAuthToken(accessToken);
+          // Subscribe to the public onboarding deck — no cloning, no seed function
+          trackEvent("Signup", { method: "google" });
+          await subscribeToDeck(ONBOARDING_DECK_ID);
+          const { decks: refreshed } = await loadDecks();
+          if (refreshed?.length > 0) {
+            setDecks(refreshed);
+            setHasEverLoadedDecks(true);
+            const firstId = refreshed[0].id;
+            setActiveDeckId(firstId);
+            const { deck: fullDeck } = await loadDeck(firstId);
+            if (fullDeck?.cards?.length > 0) {
+              setCards(ensureCardIds(fullDeck.cards));
+            }
+          }
+        } catch (e) {
+          console.error("Auto-subscribe failed:", e);
+          // Fallback — still mark as loaded so user can create their own deck
+        } finally {
+          setHasEverLoadedDecks(true);
+          setAutoSeeding(false);
+        }
+      })();
+    }
+  }, [decks.length, loading, user?.id]);
+
+  // Static pages (accessible regardless of auth)
+  if (page === "privacy") {
+    return <PrivacyPolicy dark={dark} onBack={() => setPage(null)} />;
+  }
+  if (page === "terms") {
+    return <TermsOfService dark={dark} onBack={() => setPage(null)} />;
+  }
+  if (page === "contact") {
+    return <ContactPage dark={dark} onBack={() => setPage(null)} />;
   }
 
   // Not logged in — show landing page
   if (!user) {
-    return <LandingPage onLogin={login} dark={dark} setDark={setDark} />;
+    return <LandingPage onLogin={login} dark={dark} setDark={setDark} setPage={setPage} />;
   }
 
-  if (loading) {
+  // Show loading screen while: initial load, auto-seeding, or about to auto-seed
+  // The last condition (decks empty + never loaded) prevents a flash of the main UI
+  // in the single render between initDecks finishing and autoSeedEffect starting.
+  const awaitingSeed = decks.length === 0 && !hasEverLoadedDecks && user?.id;
+  if (loading || autoSeeding || awaitingSeed) {
+    const seedingMessage = autoSeeding || awaitingSeed;
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center">
-        <div className="text-center">
-          <i className="fa-solid fa-spinner fa-spin text-3xl text-indigo-600 dark:text-indigo-400 mb-4 block" />
-          <p className="text-gray-500 dark:text-gray-400">Loading your flashcards...</p>
+        <div className="text-center space-y-4">
+          <i className="fa-solid fa-bolt text-5xl text-indigo-600 dark:text-indigo-400 animate-pulse" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {seedingMessage ? "Welcome to BetterCram!" : ""}
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400">
+            <i className="fa-solid fa-spinner fa-spin mr-2" />
+            {seedingMessage ? "Setting up your study library..." : "Loading your flashcards..."}
+          </p>
         </div>
       </div>
     );
   }
 
-  if (cards.length === 0 || showSetup) {
+  // Note: removed dead-end "Welcome" screen that showed when decks.length === 0 && !loading.
+  // That screen had no escape mechanism — if auto-seeding finished but state updates
+  // didn't propagate (race condition), users were stuck until refresh.
+  // Now we fall through to the DeckLibrary which handles the empty-decks case properly.
+
+  // Show setup screen only when explicitly triggered (e.g. regenerate)
+  if (showSetup) {
     return (
       <SetupScreen
         onCardsGenerated={handleCardsGenerated}
-        onSkip={cards.length === 0 ? async () => {
-          setLoading(true);
-          try {
-            // Load default cards without auth token
-            const prevToken = accessToken;
-            setAuthToken(null);
-            const data = await loadCards();
-            setAuthToken(prevToken);
-            if (data.cards && data.cards.length > 0) {
-              setCards(data.cards);
-              setShowSetup(false);
-            }
-          } catch (e) {
-            console.error("Failed to load default cards:", e);
-          } finally {
-            setLoading(false);
-          }
-        } : null}
+        onSkip={() => setShowSetup(false)}
         existingCards={cards.length > 0 ? cards : null}
         dark={dark}
         setDark={setDark}
+        initialUrl={activeDeck?.docUrl || ""}
       />
     );
   }
@@ -461,20 +608,22 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 transition-colors">
       {/* Header */}
-      <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+      <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1
+          <div
             onClick={() => { setMode("flip"); setShowPricing(false); window.scrollTo(0, 0); }}
-            className="text-xl font-bold text-gray-900 dark:text-white cursor-pointer hover:opacity-80 transition-opacity"
+            className="cursor-pointer hover:opacity-80 transition-opacity min-w-0"
           >
-            <i className="fa-solid fa-bolt text-indigo-600 dark:text-indigo-400 mr-2" />
-            BetterCram
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+              <i className="fa-solid fa-bolt text-indigo-600 dark:text-indigo-400 mr-2" />
+              BetterCram
+            </h1>
             {activeDeck && mode !== "library" && (
-              <span className="ml-2 text-sm font-normal text-gray-400 dark:text-gray-500">
-                / {activeDeck.name}
-              </span>
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate pl-7">
+                {activeDeck.name}
+              </p>
             )}
-          </h1>
+          </div>
           <div className="flex items-center gap-2">
             {/* Search toggle */}
             <button
@@ -487,13 +636,7 @@ export default function App() {
             >
               <i className="fa-solid fa-magnifying-glass" />
             </button>
-            {/* Dark mode toggle */}
-            <button
-              onClick={() => setDark(!dark)}
-              className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
-            >
-              <i className={`fa-solid ${dark ? "fa-sun" : "fa-moon"}`} />
-            </button>
+            {/* Dark mode and notifications moved to user menu */}
             {/* User menu */}
             {user ? (
               <div className="relative">
@@ -505,7 +648,7 @@ export default function App() {
                     <img
                       src={user.picture}
                       alt=""
-                      className="w-9 h-9 rounded-full border-2 border-indigo-300 dark:border-indigo-600"
+                      className="w-9 h-9 rounded-full object-cover flex-shrink-0 border-2 border-indigo-300 dark:border-indigo-600"
                     />
                   ) : (
                     <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-300">
@@ -554,14 +697,6 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => { setShowMenu(false); setMode("manage"); setShowPricing(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-pen-to-square w-4 text-center text-emerald-500" />
-                        Manage Cards
-                      </button>
-
-                      <button
                         onClick={() => { setShowMenu(false); setMode("planner"); setShowPricing(false); }}
                         className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
                       >
@@ -570,23 +705,19 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => {
-                          setShowMenu(false);
-                          handleGenerateMore();
-                        }}
-                        disabled={generating}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 disabled:opacity-50"
+                        onClick={() => { setShowMenu(false); setShowNotificationSettings(true); }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
                       >
-                        <i className={`fa-solid ${generating ? "fa-spinner fa-spin" : "fa-plus"} w-4 text-center text-green-500`} />
-                        {generating ? "Adding cards..." : "Add More Cards"}
+                        <i className="fa-solid fa-bell w-4 text-center text-amber-500" />
+                        Notifications
                       </button>
 
                       <button
-                        onClick={() => { setShowMenu(false); setShowSetup(true); }}
+                        onClick={() => { setDark(!dark); }}
                         className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
                       >
-                        <i className="fa-solid fa-arrows-rotate w-4 text-center text-blue-500" />
-                        Regenerate Cards
+                        <i className={`fa-solid ${dark ? "fa-sun" : "fa-moon"} w-4 text-center text-sky-500`} />
+                        {dark ? "Light Mode" : "Dark Mode"}
                       </button>
 
                       <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
@@ -617,7 +748,8 @@ export default function App() {
                               const { url } = await manageSubscription(user.email);
                               window.location.href = url;
                             } catch (err) {
-                              alert("Failed to open billing portal");
+                              // No Stripe customer yet — show pricing to subscribe
+                              setShowPricing(true);
                             }
                           }}
                           className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
@@ -641,17 +773,9 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={async () => {
-                          if (!confirm("Are you sure? This will permanently delete ALL your data — decks, cards, progress, and study plans. This cannot be undone.")) return;
-                          if (!confirm("Really delete everything? Type your mind is made up?")) return;
+                        onClick={() => {
                           setShowMenu(false);
-                          try {
-                            await resetAccount();
-                            localStorage.clear();
-                            logout();
-                          } catch (err) {
-                            alert("Failed to delete account: " + err.message);
-                          }
+                          setShowDeleteAccountModal(true);
                         }}
                         className="w-full text-left px-4 py-2 text-sm text-red-400 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3"
                       >
@@ -719,47 +843,55 @@ export default function App() {
           />
         ) : (
         <>
-        <div className="flex flex-wrap gap-1.5 justify-center">
-          {MODES.map((m) => {
-            const locked = PRO_MODES.includes(m.id) && !isPro;
-            return (
-              <button
-                key={m.id}
-                onClick={() => handleModeChange(m.id)}
-                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-medium text-xs sm:text-sm transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                  mode === m.id
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : locked
-                    ? "bg-gray-100 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700"
-                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
-                }`}
-              >
-                <i className={m.icon} />
-                <span className="hidden sm:inline">{m.label}</span>
-                {locked && <i className="fa-solid fa-lock text-[10px] ml-0.5" />}
-              </button>
-            );
-          })}
+        <div className="relative">
+          <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none sm:hidden" />
+          <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none sm:hidden" />
+          <div className="flex gap-1.5 sm:flex-wrap sm:justify-center overflow-x-auto hide-scrollbar px-1 pb-1" style={{ WebkitOverflowScrolling: "touch" }}>
+            {MODES.map((m) => {
+              const locked = PRO_MODES.includes(m.id) && !isPro;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => handleModeChange(m.id)}
+                  className={`min-w-[44px] min-h-[44px] shrink-0 px-3 py-2 sm:px-4 sm:py-2 rounded-xl font-medium text-sm transition-colors whitespace-nowrap flex items-center justify-center gap-1.5 ${
+                    mode === m.id
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : locked
+                      ? "bg-gray-100 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700"
+                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
+                  }`}
+                >
+                  <i className={`${m.icon} text-lg sm:text-sm`} />
+                  <span className="hidden sm:inline">{m.label}</span>
+                  {locked && <i className="fa-solid fa-lock text-[10px] ml-0.5" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Category filter */}
-        {(
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {CATEGORIES.filter(
-              (c) => c === "All" || (categoryCounts[c] && categoryCounts[c] > 0)
-            ).map((c) => (
-              <button
-                key={c}
-                onClick={() => setActiveCategory(c)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                  activeCategory === c
-                    ? "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700"
-                    : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-gray-300"
-                }`}
-              >
-                {c} {categoryCounts[c] ? `(${categoryCounts[c]})` : ""}
-              </button>
-            ))}
+        {/* Category filter — only in study modes, not library/manage/planner */}
+        {!["library", "manage", "planner"].includes(mode) && !showPricing && (
+          <div className="relative">
+            <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none" />
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none" />
+            <div className="flex gap-2 overflow-x-auto pb-1 px-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
+              {CATEGORIES.filter(
+                (c) => c === "All" || (categoryCounts[c] && categoryCounts[c] > 0)
+              ).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setActiveCategory(c)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                    activeCategory === c
+                      ? "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700"
+                      : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  {c} {categoryCounts[c] ? `(${categoryCounts[c]})` : ""}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -768,9 +900,146 @@ export default function App() {
           <DeckLibrary
             decks={decks}
             activeDeckId={activeDeckId}
+            user={user}
             onSelectDeck={handleSelectDeck}
             onCreateDeck={handleCreateDeck}
             onDeleteDeck={handleDeleteDeck}
+            generating={generating}
+            generatingStatus={generatingStatus}
+            onGenerateFromDoc={async (deckId, docUrl) => {
+              setGenerating(true);
+              setGeneratingStatus("Scraping document with Firecrawl...");
+              try {
+                const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
+                if (!result.content || result.content.trim().length < 50) {
+                  throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
+                }
+                setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
+                const chunkSize = 8000;
+                const chunks = [];
+                for (let i = 0; i < result.content.length; i += chunkSize) {
+                  chunks.push(result.content.slice(i, i + chunkSize));
+                }
+                let allCards = [];
+                const PARALLEL = 5;
+                const totalBatches = Math.ceil(chunks.length / PARALLEL);
+                for (let i = 0; i < chunks.length; i += PARALLEL) {
+                  const batchNum = Math.floor(i / PARALLEL) + 1;
+                  setGeneratingStatus(`Generating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
+                  const batch = chunks.slice(i, i + PARALLEL);
+                  const results = await Promise.all(
+                    batch.map(chunk => generateCards(chunk, null))
+                  );
+                  for (const { cards: c } of results) {
+                    allCards = allCards.concat(c);
+                  }
+                }
+                const withIds = ensureCardIds(allCards);
+                setGeneratingStatus(`Done! ${withIds.length} cards generated.`);
+                const deck = decks.find(d => d.id === deckId);
+                const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, docUrl };
+                await saveDeck(deckId, updatedDeck);
+                setDecks(prev => prev.map(d => d.id === deckId ? { id: deckId, ...updatedDeck } : d));
+                setActiveDeckId(deckId);
+                setCards(withIds);
+                setProgress({});
+                setMode("flip");
+                if (withIds.length > 0) precacheFirstPodcast(withIds[0]);
+              } catch (e) {
+                alert("Failed to generate cards: " + e.message);
+              } finally {
+                setGenerating(false);
+                setTimeout(() => setGeneratingStatus(""), 3000);
+              }
+            }}
+            onRefreshDecks={async () => {
+              try {
+                const { decks: fresh } = await loadDecks();
+                if (fresh) setDecks(fresh);
+              } catch {}
+            }}
+            onRegenerate={async () => {
+              const deck = decks.find(d => d.id === activeDeckId);
+              const docUrl = deck?.docUrl;
+              if (!docUrl) {
+                alert("No document URL linked to this deck.");
+                return;
+              }
+              setGenerating(true);
+              setGeneratingStatus("Scraping document for regeneration...");
+              try {
+                const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
+                if (!result.content || result.content.trim().length < 50) {
+                  throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
+                }
+                setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Regenerating flashcards...`);
+                const chunkSize = 8000;
+                const chunks = [];
+                for (let i = 0; i < result.content.length; i += chunkSize) {
+                  chunks.push(result.content.slice(i, i + chunkSize));
+                }
+                let allCards = [];
+                const PARALLEL = 5;
+                const totalBatches = Math.ceil(chunks.length / PARALLEL);
+                for (let i = 0; i < chunks.length; i += PARALLEL) {
+                  const batchNum = Math.floor(i / PARALLEL) + 1;
+                  setGeneratingStatus(`Regenerating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
+                  const batch = chunks.slice(i, i + PARALLEL);
+                  const results = await Promise.all(
+                    batch.map(chunk => generateCards(chunk, null))
+                  );
+                  for (const { cards: c } of results) {
+                    allCards = allCards.concat(c);
+                  }
+                }
+                const withIds = ensureCardIds(allCards);
+                const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, progress: {} };
+                await saveDeck(activeDeckId, updatedDeck);
+                setDecks(prev => prev.map(d => d.id === activeDeckId ? { id: activeDeckId, ...updatedDeck } : d));
+                setCards(withIds);
+                setProgress({});
+                setGeneratingStatus(`Done! Regenerated ${withIds.length} cards.`);
+                if (withIds.length > 0) precacheFirstPodcast(withIds[0]);
+              } catch (e) {
+                console.error("Regen failed:", e);
+                alert("Failed to regenerate cards: " + e.message);
+              } finally {
+                setGenerating(false);
+                setTimeout(() => setGeneratingStatus(""), 3000);
+              }
+            }}
+            onAddMore={handleGenerateMore}
+            onManageCards={() => setMode("manage")}
+            onShowPlanner={() => setMode("planner")}
+            studyPlan={studyPlan}
+            onStudyGroup={async (testId) => {
+              const plan = studyPlan;
+              if (!plan?.tests) return;
+              const test = plan.tests.find(t => t.id === testId);
+              if (!test?.deckIds?.length) return;
+              // Load cards from all decks in the group
+              let allCards = [];
+              for (const deckId of test.deckIds) {
+                const existing = decks.find(d => d.id === deckId);
+                if (existing?.cards?.length) {
+                  allCards = allCards.concat(existing.cards);
+                } else {
+                  try {
+                    const { deck: fullDeck } = await loadDeck(deckId);
+                    if (fullDeck?.cards?.length) {
+                      allCards = allCards.concat(fullDeck.cards);
+                    }
+                  } catch {
+                    console.log("Failed to load deck", deckId);
+                  }
+                }
+              }
+              if (allCards.length === 0) return;
+              const withIds = ensureCardIds(allCards);
+              setCards(withIds);
+              setActiveDeckId(test.deckIds[0]);
+              setMode("flip");
+            }}
           />
         )}
         {mode === "flip" && <FlipMode cards={filteredCards} />}
@@ -782,10 +1051,10 @@ export default function App() {
           />
         )}
         {mode === "quiz" && <QuizMode cards={filteredCards} />}
-        {mode === "tutor" && <TutorMode cards={filteredCards} />}
-        {mode === "deepdive" && <DeepDiveMode cards={filteredCards} />}
+        {mode === "tutor" && <TutorMode cards={filteredCards} deckName={activeDeck?.name} />}
+        {mode === "deepdive" && <DeepDiveMode cards={filteredCards} deckName={activeDeck?.name} />}
         {mode === "audio" && <AudioMode cards={filteredCards} />}
-        {mode === "voice" && <VoiceTutorMode cards={filteredCards} />}
+        {mode === "voice" && <VoiceTutorMode cards={filteredCards} deckName={activeDeck?.name} />}
         {mode === "manage" && (
           <CardManager
             cards={filteredCards}
@@ -802,11 +1071,68 @@ export default function App() {
             progress={progress}
             studyPlan={studyPlan}
             onUpdatePlan={handleUpdateStudyPlan}
+            onStartStudy={(deckId) => {
+              if (deckId && deckId !== activeDeckId) {
+                setActiveDeckId(deckId);
+              }
+              handleModeChange("study");
+            }}
+            decks={decks}
+            activeDeckId={activeDeckId}
           />
         )}
         </>
         )}
       </div>
+
+      {/* Install Prompt Banner */}
+      <InstallPrompt />
+
+      {/* Notification Settings Modal */}
+      <NotificationSettings
+        open={showNotificationSettings}
+        onClose={() => setShowNotificationSettings(false)}
+      />
+
+      {/* Delete Account Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteAccountModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="fa-solid fa-triangle-exclamation text-2xl text-red-600 dark:text-red-400" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete your account?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                This will permanently delete <strong>all your data</strong> — decks, cards, progress, and study plans. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteAccountModal(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowDeleteAccountModal(false);
+                  try {
+                    await resetAccount();
+                    localStorage.clear();
+                    logout();
+                  } catch (err) {
+                    alert("Failed to delete account: " + err.message);
+                  }
+                }}
+                className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 transition-all"
+              >
+                Yes, delete everything
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

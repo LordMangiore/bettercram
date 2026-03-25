@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { tutorChat } from "../api";
 
-export default function TutorMode({ cards }) {
+export default function TutorMode({ cards, deckName }) {
   const [selectedCard, setSelectedCard] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -15,7 +15,7 @@ export default function TutorMode({ cards }) {
     setResult(null);
     setActiveTab(action);
     try {
-      const { response } = await tutorChat(selectedCard, action);
+      const { response } = await tutorChat(selectedCard, action, null, deckName);
       setResult(response);
       if (action === "explain" || action === "mnemonic") {
         setChatMessages([
@@ -40,7 +40,7 @@ export default function TutorMode({ cards }) {
     setLoading(true);
 
     try {
-      const { response } = await tutorChat(selectedCard, "chat", newMessages);
+      const { response } = await tutorChat(selectedCard, "chat", newMessages, deckName);
       setChatMessages([...newMessages, { role: "assistant", content: response }]);
     } catch (err) {
       setChatMessages([

@@ -2,19 +2,24 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function makeCacheKey(card, action) {
-  const raw = `${action}:${card.front.slice(0, 80)}`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+function contentHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
   }
-  return `tutor-${Math.abs(hash).toString(36)}`;
+  return (h >>> 0).toString(36);
+}
+
+function makeCacheKey(card, action) {
+  const raw = `${action}:${card.front}:${card.back}`;
+  return `tutor-${contentHash(raw)}`;
 }
 
 async function getCache() {
   try {
     const { getStore } = await import("@netlify/blobs");
-    return getStore("tutor-cache");
+    return getStore("global-cache");
   } catch {
     return null;
   }
@@ -26,7 +31,7 @@ export default async (req) => {
   }
 
   try {
-    const { card, action, messages } = await req.json();
+    const { card, action, messages, deckName } = await req.json();
 
     // Cache explain and mnemonic (not chat)
     if (action === "explain" || action === "mnemonic") {
@@ -45,19 +50,21 @@ export default async (req) => {
       }
     }
 
-    let systemPrompt = `You are an expert MCAT tutor. You're helping a student study for the MCAT.
-Be clear, concise, and use analogies when helpful. Always relate back to what's tested on the MCAT.
+    const subject = deckName || card.category || "their studies";
+
+    let systemPrompt = `You are an expert tutor helping a student study ${subject}.
+Be clear, concise, and use analogies when helpful. Always relate concepts back to what's important for exams.
 Format responses with markdown for readability.`;
 
     let userContent = "";
 
     if (action === "explain") {
-      systemPrompt += `\n\nThe student wants a deep explanation of a concept from their flashcards.
+      systemPrompt += `\n\nThe student wants a deep explanation of a concept from their ${subject} flashcards.
 Explain it thoroughly but accessibly:
-- Start with the big picture (why does this matter for the MCAT?)
+- Start with the big picture (why does this matter for ${subject}?)
 - Break down the mechanism/concept step by step
 - Use a real-world analogy
-- Highlight common MCAT traps and misconceptions
+- Highlight common exam traps and misconceptions
 - End with 2-3 key takeaways to remember`;
       userContent = `Explain this concept in depth:\n\nQuestion: ${card.front}\nAnswer: ${card.back}\nCategory: ${card.category}`;
     } else if (action === "mnemonic") {

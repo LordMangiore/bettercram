@@ -37,6 +37,8 @@ export default function AudioMode({ cards }) {
   const audioRef = useRef(null);
   const stoppedRef = useRef(false);
   const scriptContainerRef = useRef(null);
+  const userScrolledRef = useRef(false);
+  const scrollTimeoutRef = useRef(null);
 
   // Restore last played position on mount
   useEffect(() => {
@@ -46,6 +48,20 @@ export default function AudioMode({ cards }) {
       if (saved.mode) setMode(saved.mode);
     }
   }, [cards.length]);
+
+  // Stop audio when switching away from this tab
+  useEffect(() => {
+    function handleStopAudio() {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      stoppedRef.current = true;
+      setPlayerState("idle");
+    }
+    window.addEventListener("bc-stop-audio", handleStopAudio);
+    return () => window.removeEventListener("bc-stop-audio", handleStopAudio);
+  }, []);
 
   // Generate shuffle order
   function doShuffle() {
@@ -100,6 +116,7 @@ export default function AudioMode({ cards }) {
     const aIdx = actualIdx(idx);
     stoppedRef.current = false;
     setCurrentIdx(idx);
+    if (window.plausible) window.plausible("Podcast Play", { props: { mode } });
     setPlayerState("loading");
     setScript("");
     saveLastPlayed(mode, idx);
@@ -335,6 +352,15 @@ export default function AudioMode({ cards }) {
             ref={scriptContainerRef}
             className="max-h-64 overflow-y-auto text-sm leading-relaxed scroll-smooth"
             style={{ scrollbarWidth: "thin" }}
+            onScroll={() => {
+              // Mark that user is manually scrolling
+              userScrolledRef.current = true;
+              // Reset after 3 seconds of no scrolling — resume auto-scroll
+              clearTimeout(scrollTimeoutRef.current);
+              scrollTimeoutRef.current = setTimeout(() => {
+                userScrolledRef.current = false;
+              }, 3000);
+            }}
           >
             {(() => {
               // Split script into sentences for tracking
@@ -350,7 +376,8 @@ export default function AudioMode({ cards }) {
                   <span
                     key={i}
                     ref={isActive ? (el) => {
-                      if (el && scriptContainerRef.current && playerState === "playing") {
+                      // Only auto-scroll if user hasn't manually scrolled
+                      if (el && scriptContainerRef.current && playerState === "playing" && !userScrolledRef.current) {
                         const container = scriptContainerRef.current;
                         const elTop = el.offsetTop - container.offsetTop;
                         container.scrollTo({ top: elTop - 60, behavior: "smooth" });

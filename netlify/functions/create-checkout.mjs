@@ -3,9 +3,9 @@ import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const PRICES = {
-  starter_monthly: "price_1TDz18E6n64xfKxiWTlifek8",
-  pro_monthly: "price_1TDz18E6n64xfKxiZkocCVZ1",
-  pro_yearly: "price_1TDz19E6n64xfKxiH0LX2o6O",
+  starter_monthly: "price_1TEByGE6n64xfKxiSN7fkhFs",
+  pro_monthly: "price_1TEHqjE6n64xfKxisSUqamF0",
+  pro_yearly: "price_1TEBz1E6n64xfKxihyyqD2Wu",
 };
 
 // Emails that get free access

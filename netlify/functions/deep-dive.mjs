@@ -11,13 +11,18 @@ async function getBlobStore(name) {
   }
 }
 
-function makeCacheKey(card) {
-  const raw = `deepdive:${card.front.slice(0, 80)}`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+function contentHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
   }
-  return `dive-${Math.abs(hash).toString(36)}`;
+  return (h >>> 0).toString(36);
+}
+
+function makeCacheKey(card) {
+  const raw = `deepdive:${card.front}:${card.back}`;
+  return `dive-${contentHash(raw)}`;
 }
 
 export default async (req) => {
@@ -26,26 +31,32 @@ export default async (req) => {
   }
 
   try {
-    const { card, query } = await req.json();
+    const { card, query, deckName } = await req.json();
 
     // Check cache (skip if blob store unavailable)
-    const store = await getBlobStore("deepdive-cache");
+    const store = await getBlobStore("global-cache");
     const key = makeCacheKey(card);
     if (store) {
       try {
         const cached = await store.get(key, { type: "json" });
         if (cached) {
-          return new Response(JSON.stringify(cached), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          // Check 30-day TTL
+          const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+          if (cached.cachedAt && Date.now() - cached.cachedAt < THIRTY_DAYS) {
+            return new Response(JSON.stringify(cached), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
         }
       } catch {}
     }
 
-    const searchQuery = query || `${card.front} ${card.category} MCAT`;
+    // Build a smart search query based on the card and deck
+    const subject = card.category || deckName || "academic";
+    const searchQuery = query || `${card.front} ${subject} site:edu OR site:nih.gov OR site:ncbi.nlm.nih.gov OR site:khanacademy.org`;
 
-    // Use Firecrawl to search
+    // Use Firecrawl to search for authoritative sources
     const searchRes = await fetch("https://api.firecrawl.dev/v1/search", {
       method: "POST",
       headers: {
@@ -54,7 +65,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         query: searchQuery,
-        limit: 3,
+        limit: 5,
       }),
     });
 
@@ -106,29 +117,31 @@ export default async (req) => {
       }
     }
 
+    const deckContext = deckName || card.category || "academic studies";
+
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2048,
-      system: `You are an expert MCAT tutor synthesizing research to deepen a student's understanding.
+      system: `You are an expert tutor synthesizing research to deepen a student's understanding of ${deckContext}.
 Given a flashcard topic and web research, create a comprehensive but digestible deep dive.
 
 Structure your response as:
 ## Overview
-Brief context of why this matters for the MCAT.
+Brief context of why this topic matters for ${deckContext}.
 
 ## Key Details
 The important details from the research, explained clearly.
 
-## Clinical/Real-World Connection
-How this concept applies in practice (helps with MCAT passage-based questions).
+## Real-World Application
+How this concept applies in practice — real scenarios, clinical cases, or practical examples.
 
 ## Related Concepts
-Other MCAT topics this connects to.
+Other topics in ${deckContext} this connects to.
 
-## Practice Insight
-A tricky MCAT-style question or insight based on this topic.
+## Exam Insight
+A tricky exam-style question or common misconception about this topic that students should watch out for.
 
-Use markdown formatting. Be thorough but concise.`,
+Use markdown formatting. Be thorough but concise. Cite sources when available.`,
       messages: [
         {
           role: "user",
@@ -137,6 +150,7 @@ Use markdown formatting. Be thorough but concise.`,
 Flashcard Question: ${card.front}
 Flashcard Answer: ${card.back}
 Category: ${card.category}
+Deck: ${deckName || "N/A"}
 
 ${webContent ? `Web Research:\n${webContent}` : "No web research available — use your knowledge."}`,
         },
@@ -146,6 +160,7 @@ ${webContent ? `Web Research:\n${webContent}` : "No web research available — u
     const result = {
       content: message.content[0].text,
       sources,
+      cachedAt: Date.now(),
     };
 
     // Cache result (skip if store unavailable)

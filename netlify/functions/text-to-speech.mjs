@@ -1,3 +1,21 @@
+function contentHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+async function getBlobStore(name) {
+  try {
+    const { getStore } = await import("@netlify/blobs");
+    return getStore(name);
+  } catch {
+    return null;
+  }
+}
+
 export default async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -13,8 +31,28 @@ export default async (req) => {
       });
     }
 
-    // Rachel voice
-    const voiceId = "21m00Tcm4TlvDq8ikWAM";
+    // Check global cache first
+    const cacheKey = `tts-${contentHash(text)}`;
+    const store = await getBlobStore("global-cache");
+
+    if (store) {
+      try {
+        const cached = await store.get(cacheKey, { type: "arrayBuffer" });
+        if (cached) {
+          return new Response(cached, {
+            status: 200,
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "Content-Length": cached.byteLength.toString(),
+              "X-Cache": "hit",
+            },
+          });
+        }
+      } catch {}
+    }
+
+    // Polished narrator voice
+    const voiceId = "qSeXEcewz7tA0Q0qk9fH";
 
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -44,12 +82,21 @@ export default async (req) => {
 
     const audioBuffer = await response.arrayBuffer();
 
-    // Return raw audio bytes directly
+    // Cache globally
+    if (store) {
+      try {
+        await store.set(cacheKey, new Uint8Array(audioBuffer));
+      } catch (cacheErr) {
+        console.error("Failed to cache TTS:", cacheErr);
+      }
+    }
+
     return new Response(audioBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
         "Content-Length": audioBuffer.byteLength.toString(),
+        "X-Cache": "miss",
       },
     });
   } catch (error) {

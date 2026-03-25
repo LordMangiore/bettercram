@@ -2,24 +2,30 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-async function getBlobStore(name) {
+import { getStore } from "@netlify/blobs";
+
+function getBlobStore(name) {
   try {
-    const { getStore } = await import("@netlify/blobs");
     return getStore(name);
   } catch {
     return null;
   }
 }
 
-function makeCacheKey(card, mode) {
-  // Create a stable key from card content + mode
-  const raw = `${mode}:${card.front.slice(0, 80)}`;
-  // Simple hash to keep key clean
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+function contentHash(str) {
+  // FNV-1a 32-bit hash — fast, low collision
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
   }
-  return `audio-${Math.abs(hash).toString(36)}`;
+  return (h >>> 0).toString(36);
+}
+
+function makeCacheKey(card, mode) {
+  // Global cache key based on full card content + mode
+  const raw = `${mode}:${card.front}:${card.back}`;
+  return `audio-${contentHash(raw)}`;
 }
 
 export default async (req) => {
@@ -29,22 +35,31 @@ export default async (req) => {
 
   try {
     const { card, mode } = await req.json();
-    const store = await getBlobStore("audio-cache");
+    const store = await getBlobStore("global-cache");
     const key = makeCacheKey(card, mode);
 
     // Check cache first (skip if blob store unavailable)
     if (store) {
-      const cached = await store.getWithMetadata(key, { type: "arrayBuffer" });
-      if (cached && cached.data) {
-        const script = cached.metadata?.script || "";
-        return new Response(cached.data, {
-          status: 200,
-          headers: {
-            "Content-Type": "audio/mpeg",
-            "X-Script-Text": encodeURIComponent(script),
-            "X-Cache": "hit",
-          },
-        });
+      try {
+        const cached = await store.get(key, { type: "arrayBuffer" });
+        if (cached && cached.byteLength > 0) {
+          // Get script from separate key
+          let script = "";
+          try {
+            script = await store.get(key + "-script") || "";
+          } catch {}
+          console.log("Cache HIT:", key, "size:", cached.byteLength);
+          return new Response(cached, {
+            status: 200,
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "X-Script-Text": encodeURIComponent(script),
+              "X-Cache": "hit",
+            },
+          });
+        }
+      } catch (e) {
+        console.error("Cache read error:", e);
       }
     }
 
@@ -52,18 +67,19 @@ export default async (req) => {
     let text = "";
     if (mode === "podcast") {
       const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 2048,
-        system: `You are a friendly, engaging study tutor recording a podcast-style explanation.
-Write a 60-90 second spoken explanation of this topic. Aim for 200-350 words.
-- Use a conversational, warm tone (like explaining to a friend)
-- Start with "Let's talk about..." or "So here's the thing about..."
-- Include one or two memorable analogies to make it stick
-- Build up from simple to complex — don't assume the listener already knows this
-- End with the key takeaway and one quick study tip
-- Do NOT use any markdown, bullet points, or formatting — this will be read aloud
-- Do NOT cut yourself off mid-thought — always finish your explanation completely
-- Keep it natural and flowing, like speech`,
+        system: `You are a study tutor recording a short audio explanation. Write ONLY plain spoken text — no markdown, no headers, no bullet points, no hashtags, no formatting of any kind.
+
+Rules:
+- Aim for 250-350 words (about 60-90 seconds spoken)
+- Conversational tone, like explaining to a friend
+- Start directly with the topic — no "Let's talk about" every time, vary your openings
+- One clear analogy to make it memorable
+- End with the key takeaway in one sentence
+- NEVER use # or ## or * or - or any formatting characters
+- NEVER cut off mid-sentence — always complete your thought
+- This text will be read aloud by text-to-speech, so write exactly how it should sound`,
         messages: [
           {
             role: "user",
@@ -77,7 +93,8 @@ Write a 60-90 second spoken explanation of this topic. Aim for 200-350 words.
     }
 
     // Generate audio
-    const voiceId = "21m00Tcm4TlvDq8ikWAM";
+    // Nova voice
+    const voiceId = "qSeXEcewz7tA0Q0qk9fH";
     const audioRes = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
       {
@@ -106,12 +123,17 @@ Write a 60-90 second spoken explanation of this topic. Aim for 200-350 words.
 
     const audioBuffer = await audioRes.arrayBuffer();
 
-    // Cache the audio + script in Netlify Blobs (skip if store unavailable)
+    // Cache the audio + script — save audio as blob, script as separate JSON key
+    // Do both saves in parallel to minimize time before response
     if (store) {
+      const audioKey = key;
+      const scriptKey = key + "-script";
       try {
-        await store.set(key, new Uint8Array(audioBuffer), {
-          metadata: { script: text.slice(0, 4000) },
-        });
+        await Promise.all([
+          store.set(audioKey, new Uint8Array(audioBuffer)).catch(e => console.error("Audio cache fail:", e)),
+          store.set(scriptKey, text.slice(0, 4000)).catch(e => console.error("Script cache fail:", e)),
+        ]);
+        console.log("Cached audio:", audioKey, "size:", audioBuffer.byteLength);
       } catch (cacheErr) {
         console.error("Failed to cache audio:", cacheErr);
       }
