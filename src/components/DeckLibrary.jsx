@@ -49,8 +49,11 @@ function formatDate(dateStr) {
 
 export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, onStudyGroup }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [createMode, setCreateMode] = useState("url"); // "url" | "topic" | "crawl"
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
+  const [newTopic, setNewTopic] = useState("");
+  const [crawlLimit, setCrawlLimit] = useState(25);
   const [creating, setCreating] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [publicDecks, setPublicDecks] = useState([]);
@@ -165,9 +168,21 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      await onCreateDeck(newName.trim(), newUrl.trim() || null);
+      const options = {};
+      let url = null;
+      if (createMode === "topic") {
+        options.topic = newTopic.trim();
+      } else if (createMode === "crawl") {
+        url = newUrl.trim() || null;
+        options.crawl = true;
+        options.pageLimit = crawlLimit;
+      } else {
+        url = newUrl.trim() || null;
+      }
+      await onCreateDeck(newName.trim(), url, options);
       setNewName("");
       setNewUrl("");
+      setNewTopic("");
       setShowCreate(false);
     } catch (err) {
       alert("Failed to create deck: " + err.message);
@@ -455,36 +470,116 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                 className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
               />
             </div>
+
+            {/* Source mode tabs */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Google Doc URL <span className="text-gray-400 font-normal">(optional — add cards manually if blank)</span>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Content source
               </label>
-              <input
-                type="url"
-                value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
-                placeholder="https://docs.google.com/document/d/..."
-                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                Make sure the doc is shared as "Anyone with the link can view"
-              </p>
+              <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg mb-3">
+                {[
+                  { id: "url", icon: "fa-link", label: "URL" },
+                  { id: "topic", icon: "fa-magnifying-glass", label: "Topic Search" },
+                  { id: "crawl", icon: "fa-spider", label: "Crawl Site" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCreateMode(tab.id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-all ${
+                      createMode === tab.id
+                        ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-300 shadow-sm"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                    }`}
+                  >
+                    <i className={`fa-solid ${tab.icon}`} />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* URL mode */}
+              {createMode === "url" && (
+                <div>
+                  <input
+                    type="url"
+                    value={newUrl}
+                    onChange={(e) => setNewUrl(e.target.value)}
+                    placeholder="https://docs.google.com/document/d/... or any URL"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Google Docs, websites, articles, or any public URL
+                  </p>
+                </div>
+              )}
+
+              {/* Topic search mode */}
+              {createMode === "topic" && (
+                <div>
+                  <input
+                    type="text"
+                    value={newTopic}
+                    onChange={(e) => setNewTopic(e.target.value)}
+                    placeholder="e.g., Krebs cycle, Constitutional law, Python data structures"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    <i className="fa-solid fa-fire text-orange-400 mr-1" />
+                    Powered by Firecrawl — searches the web and generates cards from the best sources
+                  </p>
+                </div>
+              )}
+
+              {/* Crawl site mode */}
+              {createMode === "crawl" && (
+                <div>
+                  <input
+                    type="url"
+                    value={newUrl}
+                    onChange={(e) => setNewUrl(e.target.value)}
+                    placeholder="https://courses.example.edu/bio101"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                  <div className="flex items-center gap-3 mt-2">
+                    <label className="text-xs text-gray-500 dark:text-gray-400">Page limit:</label>
+                    <select
+                      value={crawlLimit}
+                      onChange={(e) => setCrawlLimit(Number(e.target.value))}
+                      className="text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded px-2 py-1 text-gray-700 dark:text-gray-200"
+                    >
+                      <option value={10}>10 pages</option>
+                      <option value={25}>25 pages</option>
+                      <option value={50}>50 pages</option>
+                    </select>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      <i className="fa-solid fa-spider text-purple-400 mr-1" />
+                      Crawls all linked pages from the starting URL
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
+
             <div className="flex gap-3 pt-1">
               <button
                 type="submit"
-                disabled={creating || !newName.trim()}
+                disabled={creating || !newName.trim() || (createMode === "topic" && !newTopic.trim())}
                 className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-all disabled:opacity-50"
               >
                 {creating ? (
                   <><i className="fa-solid fa-spinner fa-spin" /> Creating...</>
+                ) : createMode === "topic" ? (
+                  <><i className="fa-solid fa-magnifying-glass" /> Search & Generate</>
+                ) : createMode === "crawl" ? (
+                  <><i className="fa-solid fa-spider" /> Crawl & Generate</>
                 ) : (
                   <><i className="fa-solid fa-plus" /> Create Deck</>
                 )}
               </button>
               <button
                 type="button"
-                onClick={() => { setShowCreate(false); setNewName(""); setNewUrl(""); }}
+                onClick={() => { setShowCreate(false); setNewName(""); setNewUrl(""); setNewTopic(""); }}
                 className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 Cancel

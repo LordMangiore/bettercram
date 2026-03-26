@@ -4,7 +4,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const PRICES = {
   starter_monthly: "price_1TEByGE6n64xfKxiSN7fkhFs",
-  pro_monthly: "price_1TEHqjE6n64xfKxisSUqamF0",
+  pro_monthly: "price_1TEBycE6n64xfKxiHdWfq2OC",
   pro_yearly: "price_1TEBz1E6n64xfKxihyyqD2Wu",
 };
 

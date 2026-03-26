@@ -85,11 +85,83 @@ export async function scrapeDocument(url, onStatus) {
   throw new Error("Document is too large to process. Try splitting it into smaller documents.");
 }
 
-export async function generateCards(content, category) {
+// === Firecrawl-powered features ===
+
+export async function searchAndScrape(topic) {
+  const res = await fetch(`${API_BASE}/search-and-scrape`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topic }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to search topic"));
+  return res.json();
+}
+
+export async function crawlStart(url, limit = 25) {
+  const res = await fetch(`${API_BASE}/crawl-start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, limit }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to start crawl"));
+  return res.json();
+}
+
+export async function crawlPoll(jobId) {
+  const res = await fetch(`${API_BASE}/crawl-poll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to check crawl status"));
+  return res.json();
+}
+
+export async function extractCards(url) {
+  const res = await fetch(`${API_BASE}/extract-cards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to extract cards"));
+  return res.json();
+}
+
+export async function generateHelperCards(card) {
+  const res = await fetch(`${API_BASE}/generate-helper-cards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ card }),
+  });
+  if (!res.ok) return { cards: [] }; // fail silently
+  return res.json();
+}
+
+export async function regenCard(card, style = "default") {
+  const res = await fetch(`${API_BASE}/regen-card`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ card, style }),
+  });
+  if (!res.ok) throw new Error(await safeError(res, "Failed to regenerate card"));
+  return res.json();
+}
+
+export async function scoreCards(cards) {
+  const res = await fetch(`${API_BASE}/score-cards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cards }),
+  });
+  if (!res.ok) return { cards, removed: 0, improved: 0 }; // fail silently
+  return res.json();
+}
+
+export async function generateCards(content, category, existingTopics) {
   const res = await fetch(`${API_BASE}/generate-cards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, category }),
+    body: JSON.stringify({ content, category, existingTopics }),
   });
   if (!res.ok) throw new Error(await safeError(res, "Failed to generate cards"));
   return res.json();

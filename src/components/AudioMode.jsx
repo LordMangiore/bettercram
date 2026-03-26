@@ -291,6 +291,66 @@ export default function AudioMode({ cards }) {
         </div>
       </div>
 
+      {/* Controls — prominent at top */}
+      <div className="flex items-center justify-center gap-4 mb-4">
+        <button
+          onClick={skipPrev}
+          disabled={currentIdx === 0 || playerState === "loading"}
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 transition-colors"
+        >
+          <i className="fa-solid fa-backward-step text-lg" />
+        </button>
+
+        {playerState === "idle" ? (
+          <button
+            onClick={() => playCard(currentIdx)}
+            disabled={cards.length === 0}
+            className="w-20 h-20 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/30"
+          >
+            <i className="fa-solid fa-play text-2xl ml-1" />
+          </button>
+        ) : playerState === "loading" ? (
+          <button
+            onClick={stopPlayback}
+            className="w-20 h-20 flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 transition-colors"
+          >
+            <i className="fa-solid fa-spinner fa-spin text-2xl" />
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={togglePause}
+              className="w-20 h-20 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/30"
+            >
+              <i className={`fa-solid ${playerState === "playing" ? "fa-pause" : "fa-play ml-1"} text-2xl`} />
+            </button>
+            <button
+              onClick={stopPlayback}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800/30 transition-colors"
+            >
+              <i className="fa-solid fa-stop" />
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={skipNext}
+          disabled={currentIdx >= cards.length - 1 || playerState === "loading"}
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 transition-colors"
+        >
+          <i className="fa-solid fa-forward-step text-lg" />
+        </button>
+      </div>
+
+      {/* Loading */}
+      {playerState === "loading" && (
+        <div className="text-center py-2 mb-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {mode === "podcast" ? "Sage is preparing your lesson..." : "Generating audio..."}
+          </p>
+        </div>
+      )}
+
       {/* Now playing */}
       {card && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-4">
@@ -400,71 +460,9 @@ export default function AudioMode({ cards }) {
         </div>
       )}
 
-      {/* Loading */}
-      {playerState === "loading" && (
-        <div className="text-center py-4">
-          <i className="fa-solid fa-spinner fa-spin text-xl text-indigo-600 mb-2 block" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {mode === "podcast" ? "Claude is writing, ElevenLabs is recording..." : "Generating audio..."}
-          </p>
-        </div>
-      )}
-
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-4 mt-4">
-        <button
-          onClick={skipPrev}
-          disabled={currentIdx === 0 || playerState === "loading"}
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 transition-colors"
-        >
-          <i className="fa-solid fa-backward-step text-lg" />
-        </button>
-
-        {/* Main play/pause/stop button */}
-        {playerState === "idle" ? (
-          <button
-            onClick={() => playCard(currentIdx)}
-            disabled={cards.length === 0}
-            className="w-16 h-16 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-          >
-            <i className="fa-solid fa-play text-xl ml-1" />
-          </button>
-        ) : playerState === "loading" ? (
-          <button
-            onClick={stopPlayback}
-            className="w-16 h-16 flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 transition-colors"
-          >
-            <i className="fa-solid fa-spinner fa-spin text-xl" />
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={togglePause}
-              className="w-16 h-16 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-            >
-              <i className={`fa-solid ${playerState === "playing" ? "fa-pause" : "fa-play ml-1"} text-xl`} />
-            </button>
-            <button
-              onClick={stopPlayback}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800/30 transition-colors"
-            >
-              <i className="fa-solid fa-stop" />
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={skipNext}
-          disabled={currentIdx >= cards.length - 1 || playerState === "loading"}
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 transition-colors"
-        >
-          <i className="fa-solid fa-forward-step text-lg" />
-        </button>
-      </div>
-
-      <p className="text-center text-xs text-gray-400 mt-3">
+      <p className="text-center text-xs text-gray-400 mt-4">
         {mode === "podcast"
-          ? "Claude explains each concept, ElevenLabs narrates"
+          ? "Claude explains each concept, Sage narrates"
           : "Each card's Q&A read aloud"}
         {cachedCount > 0 && " • Previously played cards load instantly"}
       </p>

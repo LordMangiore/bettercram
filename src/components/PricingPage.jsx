@@ -3,41 +3,62 @@ import { createCheckout } from "../api";
 
 const PLANS = [
   {
-    id: "starter",
-    name: "Starter",
-    price: 12,
+    id: "free",
+    name: "Free",
+    price: 0,
     interval: "month",
-    priceKey: "starter_monthly",
+    priceKey: "free",
     features: [
       "Flip cards & study mode",
-      "AI-generated quizzes",
-      "Spaced repetition tracking",
+      "Spaced repetition (FSRS)",
+      "Create cards manually",
+      "Streak & heat glow gamification",
+      "Community decks",
+      "Study planner with key dates",
       "Search & filter cards",
       "Dark mode",
     ],
     missing: [
-      "AI Tutor (Claude)",
+      "AI-generated cards & quizzes",
+      "AI Tutor",
+      "Voice Tutor",
+      "Audio lessons",
+      "Deep dive research",
+    ],
+  },
+  {
+    id: "starter",
+    name: "Starter",
+    price: 9,
+    interval: "month",
+    priceKey: "starter_monthly",
+    popular: true,
+    features: [
+      "Everything in Free, plus:",
+      "AI-generated cards from documents",
+      "AI-generated quizzes",
+      "AI Tutor — explanations & mnemonics",
+      "Audio card narration",
+      "Push notification reminders",
+    ],
+    missing: [
       "Voice Tutor (ElevenLabs)",
       "Audio lessons",
       "Deep dive research",
-      "Multiple document library",
     ],
   },
   {
     id: "pro_monthly",
     name: "Pro",
-    price: 25,
+    price: 19,
     interval: "month",
     priceKey: "pro_monthly",
-    popular: true,
     features: [
       "Everything in Starter, plus:",
-      "AI Tutor — deep explanations & mnemonics",
-      "Voice Tutor — real-time conversation",
+      "Voice Tutor — real-time conversation with Nova",
       "Audio study sessions",
       "Deep dive research with web sources",
       "Multiple document library",
-      "Study planner with key dates",
       "Unlimited custom cards",
       "Priority support",
     ],
@@ -46,13 +67,13 @@ const PLANS = [
   {
     id: "pro_yearly",
     name: "Pro Annual",
-    price: 225,
+    price: 149,
     interval: "year",
     priceKey: "pro_yearly",
-    savings: "Save $75/yr",
+    savings: "Save $79/yr",
     features: [
       "Everything in Pro",
-      "2+ months free",
+      "Over 4 months free",
       "Lock in your rate",
     ],
     missing: [],
@@ -133,15 +154,17 @@ export default function PricingPage({ email, onSubscribed, onBack, dark }) {
 
               <div className="mb-4">
                 <span className={`text-4xl font-bold ${plan.popular ? "" : "text-gray-900 dark:text-white"}`}>
-                  ${plan.price}
+                  {plan.price === 0 ? "Free" : `$${plan.price}`}
                 </span>
-                <span className={`text-sm ${plan.popular ? "text-indigo-200" : "text-gray-400"}`}>
-                  /{plan.interval}
-                </span>
+                {plan.price > 0 && (
+                  <span className={`text-sm ${plan.popular ? "text-indigo-200" : "text-gray-400"}`}>
+                    /{plan.interval}
+                  </span>
+                )}
               </div>
 
               <button
-                onClick={() => handleSelect(plan)}
+                onClick={() => plan.price === 0 ? onBack?.() : handleSelect(plan)}
                 disabled={loading}
                 className={`w-full py-3 rounded-xl font-semibold text-sm transition-all mb-6 ${
                   plan.popular
@@ -152,7 +175,7 @@ export default function PricingPage({ email, onSubscribed, onBack, dark }) {
                 {loading === plan.priceKey ? (
                   <><i className="fa-solid fa-spinner fa-spin mr-2" />Processing...</>
                 ) : (
-                  "Start 7-day free trial"
+                  plan.price === 0 ? "Get Started" : "Start 7-day free trial"
                 )}
               </button>
 

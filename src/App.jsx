@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useAuth } from "./hooks/useAuth";
-import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scrapeDocument, saveStudyPlan, loadStudyPlan, checkSubscription, manageSubscription, loadDecks, loadDeck, saveDeck, deleteDeck as apiDeleteDeck, seedSampleDecks, resetAccount, precacheFirstPodcast, subscribeToDeck } from "./api";
+import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scoreCards, regenCard, scrapeDocument, searchAndScrape, crawlStart, crawlPoll, extractCards, saveStudyPlan, loadStudyPlan, checkSubscription, manageSubscription, loadDecks, loadDeck, saveDeck, deleteDeck as apiDeleteDeck, seedSampleDecks, resetAccount, precacheFirstPodcast, subscribeToDeck } from "./api";
 import PricingPage from "./components/PricingPage";
 import DeckLibrary from "./components/DeckLibrary";
 import InstallPrompt from "./components/InstallPrompt";
@@ -15,6 +15,7 @@ import TutorMode from "./components/TutorMode";
 import DeepDiveMode from "./components/DeepDiveMode";
 import AudioMode from "./components/AudioMode";
 import VoiceTutorMode from "./components/VoiceTutorMode";
+import AboutPage from "./components/AboutPage";
 import CardManager from "./components/CardManager";
 import PlannerMode from "./components/PlannerMode";
 import LandingPage from "./components/LandingPage";
@@ -221,8 +222,95 @@ export default function App() {
   }, [user]);
 
   // Deck management
-  async function handleCreateDeck(name, docUrl) {
-    trackEvent("Deck Created", { hasDoc: !!docUrl, name });
+  // Shared helper: chunk content and batch-generate cards
+  async function generateFromContent(content, setStatus) {
+    const chunkSize = 4000; // Smaller chunks = faster per call, less likely to timeout
+    const chunks = [];
+    for (let i = 0; i < content.length; i += chunkSize) {
+      chunks.push(content.slice(i, i + chunkSize));
+    }
+    let allCards = [];
+    let coveredTopics = "";
+    const PARALLEL = 5;
+    const totalBatches = Math.ceil(chunks.length / PARALLEL);
+
+    // Helper: generate with retry
+    async function generateWithRetry(chunk, topics, retries = 2) {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          return await generateCards(chunk, null, topics || undefined);
+        } catch (e) {
+          if (attempt === retries) {
+            console.error("Chunk failed after retries:", e.message);
+            return { cards: [] }; // Skip failed chunk instead of stalling
+          }
+          // Wait briefly before retry
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      return { cards: [] };
+    }
+
+    for (let i = 0; i < chunks.length; i += PARALLEL) {
+      const batchNum = Math.floor(i / PARALLEL) + 1;
+      setStatus(`Generating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
+      const batch = chunks.slice(i, i + PARALLEL);
+      const results = await Promise.allSettled(
+        batch.map(chunk => generateWithRetry(chunk, coveredTopics))
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value?.cards) {
+          allCards = allCards.concat(r.value.cards);
+        }
+      }
+      // Build topic summary from generated cards for next batch
+      coveredTopics = allCards.map(c => c.front.slice(0, 40)).join(", ");
+      if (coveredTopics.length > 500) coveredTopics = coveredTopics.slice(0, 500);
+    }
+    // Quality scoring pass — deduplicate and improve
+    if (allCards.length > 5) {
+      const totalCards = allCards.length;
+      const SCORE_BATCH = 50;
+      const totalBatches = Math.ceil(totalCards / SCORE_BATCH);
+      let scoredCards = [];
+      let totalRemoved = 0;
+      let totalImproved = 0;
+      let failures = 0;
+      for (let i = 0; i < allCards.length; i += SCORE_BATCH) {
+        const batchNum = Math.floor(i / SCORE_BATCH) + 1;
+        const processed = scoredCards.length + totalRemoved;
+        setStatus(`Quality pass: batch ${batchNum}/${totalBatches} — ${processed}/${totalCards} processed, ${totalRemoved} removed, ${totalImproved} improved`);
+        const batch = allCards.slice(i, i + SCORE_BATCH);
+        try {
+          const { cards: scored, removed, improved } = await scoreCards(batch);
+          scoredCards = scoredCards.concat(scored);
+          totalRemoved += removed || 0;
+          totalImproved += improved || 0;
+        } catch (e) {
+          // On failure, keep the batch as-is rather than losing cards
+          scoredCards = scoredCards.concat(batch);
+          failures++;
+        }
+      }
+      setStatus(`Quality pass complete: ${scoredCards.length} cards kept, ${totalRemoved} removed, ${totalImproved} improved${failures > 0 ? `, ${failures} batches skipped` : ''}`);
+      return ensureCardIds(scoredCards);
+    }
+    return ensureCardIds(allCards);
+  }
+
+  // Shared helper: finalize deck after card generation
+  async function finalizeDeck(deckId, deck, generatedCards, extraMeta = {}) {
+    const updatedDeck = { ...deck, cards: generatedCards, cardCount: generatedCards.length, ...extraMeta };
+    await saveDeck(deckId, updatedDeck);
+    setDecks(prev => prev.map(d => d.id === deckId ? { id: deckId, ...updatedDeck } : d));
+    setCards(generatedCards);
+    setGeneratingStatus(`Done! ${generatedCards.length} cards generated.`);
+    setMode("flip");
+    if (generatedCards.length > 0) precacheFirstPodcast(generatedCards[0]);
+  }
+
+  async function handleCreateDeck(name, docUrl, options = {}) {
+    trackEvent("Deck Created", { hasDoc: !!docUrl, hasTopic: !!options.topic, hasCrawl: !!options.crawl, name });
     const deckId = "deck-" + Date.now();
     const deck = {
       name,
@@ -233,59 +321,93 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
 
-    // Save the empty deck first
     await saveDeck(deckId, deck);
     setDecks(prev => [...prev, { id: deckId, ...deck }]);
     setActiveDeckId(deckId);
     setCards([]);
     setProgress({});
 
-    if (docUrl) {
-      // Generate cards from the doc directly
+    if (options.topic) {
+      // === TOPIC SEARCH: Firecrawl Search + Scrape → Generate ===
+      setGenerating(true);
+      setGeneratingStatus("Searching the web for the best sources...");
+      try {
+        const { sources, content } = await searchAndScrape(options.topic);
+        if (!content || content.trim().length < 50) {
+          throw new Error("Could not find enough content on this topic. Try a more specific query.");
+        }
+        setGeneratingStatus(`Found ${sources.length} sources (${Math.round(content.length / 1000)}k chars). Generating flashcards...`);
+        const withIds = await generateFromContent(content, setGeneratingStatus);
+        await finalizeDeck(deckId, deck, withIds, { sourceType: "topic", topic: options.topic, sources });
+      } catch (e) {
+        console.error("Topic search failed:", e);
+        alert("Failed to generate cards: " + e.message + "\nYou can add cards manually.");
+        setMode("manage");
+      } finally {
+        setGenerating(false);
+        setTimeout(() => setGeneratingStatus(""), 3000);
+      }
+    } else if (options.crawl && docUrl) {
+      // === SITE CRAWL: Firecrawl Map + Crawl → Generate ===
+      setGenerating(true);
+      setGeneratingStatus("Mapping site structure...");
+      try {
+        const { jobId, mappedUrls } = await crawlStart(docUrl, options.pageLimit || 25);
+        setGeneratingStatus(`Found ${mappedUrls || "?"} pages. Crawling...`);
+
+        // Poll until complete
+        let result;
+        while (true) {
+          await new Promise(r => setTimeout(r, 3000));
+          result = await crawlPoll(jobId);
+          if (result.status === "completed") break;
+          setGeneratingStatus(result.progress || "Crawling pages...");
+        }
+
+        if (!result.content || result.content.trim().length < 50) {
+          throw new Error("Could not extract enough content from this site.");
+        }
+        setGeneratingStatus(`Crawled ${result.pageCount} pages (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
+        const withIds = await generateFromContent(result.content, setGeneratingStatus);
+        await finalizeDeck(deckId, deck, withIds, { sourceType: "crawl", docUrl, sources: result.sources, pageCount: result.pageCount });
+      } catch (e) {
+        console.error("Site crawl failed:", e);
+        alert("Failed to crawl site: " + e.message + "\nYou can add cards manually.");
+        setMode("manage");
+      } finally {
+        setGenerating(false);
+        setTimeout(() => setGeneratingStatus(""), 3000);
+      }
+    } else if (docUrl) {
+      // === URL SCRAPE: Existing flow ===
       setGenerating(true);
       setGeneratingStatus("Scraping document with Firecrawl...");
       try {
+        // Auto-detect study sites for smart extraction
+        let content;
+        let extraMeta = { docUrl };
+        const isStudySite = /quizlet\.com|brainscape\.com|cram\.com|studyblue\.com/.test(docUrl);
+        if (isStudySite) {
+          setGeneratingStatus("Detected study site — extracting flashcards directly...");
+          try {
+            const extracted = await extractCards(docUrl);
+            if (extracted.cards && extracted.cards.length > 0) {
+              const withIds = ensureCardIds(extracted.cards);
+              await finalizeDeck(deckId, deck, withIds, { ...extraMeta, sourceType: "extract" });
+              setGenerating(false);
+              setTimeout(() => setGeneratingStatus(""), 3000);
+              return;
+            }
+          } catch { /* fall through to regular scrape */ }
+        }
+
         const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
         if (!result.content || result.content.trim().length < 50) {
           throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
         }
-
         setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
-
-        // Chunk and generate
-        const chunkSize = 8000;
-        const chunks = [];
-        for (let i = 0; i < result.content.length; i += chunkSize) {
-          chunks.push(result.content.slice(i, i + chunkSize));
-        }
-
-        let allCards = [];
-        const PARALLEL = 5;
-        const totalBatches = Math.ceil(chunks.length / PARALLEL);
-        for (let i = 0; i < chunks.length; i += PARALLEL) {
-          const batchNum = Math.floor(i / PARALLEL) + 1;
-          setGeneratingStatus(`Generating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
-          const batch = chunks.slice(i, i + PARALLEL);
-          const results = await Promise.all(
-            batch.map(chunk => generateCards(chunk, null))
-          );
-          for (const { cards: c } of results) {
-            allCards = allCards.concat(c);
-          }
-        }
-
-        const withIds = ensureCardIds(allCards);
-        const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, docUrl };
-        await saveDeck(deckId, updatedDeck);
-        setDecks(prev => prev.map(d => d.id === deckId ? { id: deckId, ...updatedDeck } : d));
-        setCards(withIds);
-        setGeneratingStatus(`Done! ${withIds.length} cards generated.`);
-        setMode("flip");
-
-        // Fire-and-forget: precache first card's podcast so Audio mode has something ready
-        if (withIds.length > 0) {
-          precacheFirstPodcast(withIds[0]);
-        }
+        const withIds = await generateFromContent(result.content, setGeneratingStatus);
+        await finalizeDeck(deckId, deck, withIds, extraMeta);
       } catch (e) {
         console.error("Failed to generate cards:", e);
         alert("Failed to generate cards: " + e.message + "\nYou can add cards manually.");
@@ -295,7 +417,6 @@ export default function App() {
         setTimeout(() => setGeneratingStatus(""), 3000);
       }
     } else {
-      // No doc URL — go to manage mode to add cards manually
       setMode("manage");
     }
   }
@@ -465,6 +586,25 @@ export default function App() {
     });
   }
 
+  // Regenerate a single card with a new style
+  async function handleRegenCard(card, style) {
+    try {
+      const result = await regenCard(card, style);
+      if (result?.front && result?.back) {
+        const updated = cards.map(c =>
+          c.id === card.id ? { ...c, front: result.front, back: result.back } : c
+        );
+        setCards(updated);
+        // Save to deck
+        saveToDeck(updated).catch(() => {});
+        return true;
+      }
+    } catch (e) {
+      console.error("Card regen failed:", e);
+    }
+    return false;
+  }
+
   const [generating, setGenerating] = useState(false);
 
   async function handleGenerateMore() {
@@ -535,6 +675,8 @@ export default function App() {
             const { deck: fullDeck } = await loadDeck(firstId);
             if (fullDeck?.cards?.length > 0) {
               setCards(ensureCardIds(fullDeck.cards));
+              // First-time user — take them straight to Audio mode
+              setMode("audio");
             }
           }
         } catch (e) {
@@ -557,6 +699,9 @@ export default function App() {
   }
   if (page === "contact") {
     return <ContactPage dark={dark} onBack={() => setPage(null)} />;
+  }
+  if (page === "about") {
+    return <AboutPage dark={dark} onBack={() => setPage(null)} />;
   }
 
   // Not logged in — show landing page
@@ -1042,7 +1187,7 @@ export default function App() {
             }}
           />
         )}
-        {mode === "flip" && <FlipMode cards={filteredCards} />}
+        {mode === "flip" && <FlipMode cards={filteredCards} onRegenCard={handleRegenCard} />}
         {mode === "study" && (
           <StudyMode
             cards={filteredCards}

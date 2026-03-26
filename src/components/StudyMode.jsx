@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { createEmptyCard, fsrs, generatorParameters, Rating } from "ts-fsrs";
 import confetti from "canvas-confetti";
+import { generateHelperCards } from "../api";
 import FlashCard from "./FlashCard";
 import { RotateIcon } from "./Icons";
 
@@ -345,6 +346,17 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
 
     onUpdateProgress(key, updated);
 
+    // Auto-generate helper cards when a card hits 3+ lapses (fire and forget)
+    if (rating === Rating.Again && updatedCard.lapses >= 3 && !prev._helpersGenerated) {
+      onUpdateProgress(key, { ...updated, _helpersGenerated: true });
+      generateHelperCards(currentCard).then(({ cards: helpers }) => {
+        if (helpers?.length > 0) {
+          // Add helper cards to the pool for this session
+          setPool(p => [...p, ...helpers]);
+        }
+      }).catch(() => {});
+    }
+
     // Stats
     setSessionStats((s) => ({
       reviewed: s.reviewed + 1,
@@ -444,6 +456,23 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
   }
 
   if (!initialized) return null;
+
+  // No cards in deck at all
+  if (cards.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+          <i className="fa-solid fa-cards-blank text-3xl text-gray-400" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+          No cards yet
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400">
+          Add cards to this deck to start studying.
+        </p>
+      </div>
+    );
+  }
 
   // Session complete screen — only show if you actually reviewed cards
   if (sessionComplete && sessionStats.reviewed > 0) {
@@ -558,6 +587,44 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
   // Card state label
   const stateLabel = fsrsCard.state === 0 ? "New" : fsrsCard.state === 1 ? "Learning" : fsrsCard.state === 2 ? "Review" : "Relearning";
 
+  // Card type rotation — for review cards (reps > 1), sometimes show as a different format
+  const displayCard = useMemo(() => {
+    if (!currentCard) return null;
+    try {
+      const reps = fsrsCard.reps || 0;
+      // Only rotate for cards that have been seen 2+ times
+      if (reps < 2) return currentCard;
+      // Use a deterministic "random" based on card + reps to be consistent
+      const hash = (currentCard.front.length * 31 + reps * 7) % 100;
+      if (hash < 30) {
+        // Gap fill: replace a key term in the front with ______
+        const words = (currentCard.back || "").split(/\s+/).filter(w => w.length > 4);
+        if (words.length > 0) {
+          const keyWord = words[Math.min(Math.floor(hash / 10), words.length - 1)];
+          const cleanWord = keyWord.replace(/[.,;:!?()]/g, "");
+          if (cleanWord) {
+            return {
+              ...currentCard,
+              front: `Fill in the blank: ${currentCard.back.replace(new RegExp(cleanWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), "______").slice(0, 200)}`,
+              _rotated: "gap-fill",
+            };
+          }
+        }
+      } else if (hash < 45) {
+        // Reverse card: show answer, ask for the question concept
+        return {
+          ...currentCard,
+          front: `What concept does this describe?\n\n"${(currentCard.back || "").slice(0, 150)}${(currentCard.back || "").length > 150 ? "..." : ""}"`,
+          back: currentCard.front,
+          _rotated: "reversed",
+        };
+      }
+      return currentCard;
+    } catch {
+      return currentCard;
+    }
+  }, [currentCard, fsrsCard.reps]);
+
   return (
     <div>
       {/* Session size selector */}
@@ -637,8 +704,26 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
         </div>
       </div>
 
+      {/* Card with slide animation + heat glow */}
+      <div className="rounded-2xl mb-4">
+        <div
+          className={swipeDir === "left" ? "animate-slide-out-left" : swipeDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
+          onAnimationEnd={handleSwipeEnd}
+        >
+          <FlashCard
+            card={displayCard || currentCard}
+            cardKey={`study-${againQueue.length > 0 ? "again-" + currentCard.front.slice(0, 20) : index}-${displayCard?._rotated || ""}`}
+            showActions
+            sm2Rating
+            intervals={intervals}
+            onRate={handleRate}
+            heatLevel={heatLevel}
+          />
+        </div>
+      </div>
+
       {/* Streak / state indicator */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500 dark:text-gray-400">
             <i className="fa-solid fa-fire mr-1" />
@@ -671,25 +756,7 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
         </span>
       </div>
 
-      {/* Card with slide animation + heat glow */}
-      <div className="overflow-hidden rounded-2xl">
-        <div
-          className={swipeDir === "left" ? "animate-slide-out-left" : swipeDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
-          onAnimationEnd={handleSwipeEnd}
-        >
-          <FlashCard
-            card={currentCard}
-            cardKey={`study-${againQueue.length > 0 ? "again-" + currentCard.front.slice(0, 20) : index}`}
-            showActions
-            sm2Rating
-            intervals={intervals}
-            onRate={handleRate}
-            heatLevel={heatLevel}
-          />
-        </div>
-      </div>
-
-      <div className="mt-6 text-center">
+      <div className="text-center">
         <button
           onClick={resetSession}
           className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1.5 mx-auto"

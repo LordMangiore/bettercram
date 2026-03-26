@@ -16,9 +16,11 @@ function textSize(text) {
   return "text-lg leading-relaxed";
 }
 
-export default function FlashCard({ card, onKnown, onUnknown, onRate, showActions, sm2Rating, intervals, cardKey, heatLevel = 0 }) {
+export default function FlashCard({ card, onKnown, onUnknown, onRate, showActions, sm2Rating, intervals, cardKey, heatLevel = 0, onRegenCard }) {
   const [flipped, setFlipped] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [regenning, setRegenning] = useState(false);
+  const [regenMenu, setRegenMenu] = useState(false);
   const audioRef = useRef(null);
   const frontRef = useRef(null);
   const backRef = useRef(null);
@@ -56,7 +58,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e) => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON") return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
     if (e.code === "Space") {
       e.preventDefault();
@@ -108,6 +110,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
 
   function handleSM2Rate(e, quality) {
     e.stopPropagation();
+    e.currentTarget.blur(); // prevent space bar from re-triggering this button
     setFlipped(false);
     onRate?.(quality);
   }
@@ -115,7 +118,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
   return (
     <div className="w-full max-w-lg mx-auto">
       <div
-        className="w-full cursor-pointer select-none"
+        className={`w-full cursor-pointer select-none rounded-2xl transition-all duration-500 ${heatLevel > 0 ? `card-heat-${heatLevel}` : ""}`}
         style={{ perspective: "1200px" }}
         onClick={() => setFlipped(!flipped)}
       >
@@ -131,7 +134,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
           {/* Front — Question */}
           <div
             ref={frontRef}
-            className={`absolute inset-0 w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-8 flex flex-col justify-between transition-all duration-500 ${heatLevel > 0 ? `card-heat-${heatLevel}` : ""}`}
+            className="absolute inset-0 w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-8 flex flex-col justify-between"
             style={{ backfaceVisibility: "hidden" }}
           >
             <div>
@@ -160,7 +163,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
           {/* Back — Answer */}
           <div
             ref={backRef}
-            className={`absolute inset-0 w-full bg-indigo-50 dark:bg-indigo-950 rounded-2xl shadow-lg border border-indigo-200 dark:border-indigo-800 p-8 flex flex-col justify-between overflow-y-auto transition-all duration-500 ${heatLevel > 0 ? `card-heat-${heatLevel}` : ""}`}
+            className="absolute inset-0 w-full bg-indigo-50 dark:bg-indigo-950 rounded-2xl shadow-lg border border-indigo-200 dark:border-indigo-800 p-8 flex flex-col justify-between overflow-y-auto"
             style={{
               backfaceVisibility: "hidden",
               transform: "rotateY(180deg)",
@@ -179,17 +182,62 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
                 {card.back}
               </p>
             </div>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-4 text-center">
-              {sm2Rating ? (
-                <>
-                  <i className="fa-solid fa-keyboard mr-1" /> Rate below or press 1-4
-                </>
-              ) : (
-                <>
-                  <i className="fa-solid fa-hand-pointer mr-1" /> Tap or press space to flip
-                </>
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center flex-1">
+                {sm2Rating ? (
+                  <>
+                    <i className="fa-solid fa-keyboard mr-1" /> Rate below or press 1-4
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-hand-pointer mr-1" /> Tap or press space to flip
+                  </>
+                )}
+              </p>
+              {onRegenCard && (
+                <div className="relative">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRegenMenu(!regenMenu); }}
+                    disabled={regenning}
+                    className="text-xs text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors p-1"
+                    title="Rewrite this card"
+                  >
+                    {regenning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}
+                  </button>
+                  {regenMenu && (
+                    <div
+                      className="absolute bottom-8 right-0 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 py-1 min-w-[160px] z-50"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {[
+                        { style: "gap-fill", label: "Gap fill", icon: "fa-text-slash" },
+                        { style: "clinical", label: "Clinical scenario", icon: "fa-stethoscope" },
+                        { style: "deeper", label: "Go deeper", icon: "fa-arrow-down-long" },
+                        { style: "simpler", label: "Simplify", icon: "fa-feather" },
+                        { style: "compare", label: "Compare/contrast", icon: "fa-code-compare" },
+                      ].map((opt) => (
+                        <button
+                          key={opt.style}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setRegenMenu(false);
+                            setRegenning(true);
+                            try {
+                              const result = await onRegenCard(card, opt.style);
+                              if (result) setRegenning(false);
+                            } catch { setRegenning(false); }
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 flex items-center gap-2"
+                        >
+                          <i className={`fa-solid ${opt.icon} w-4 text-center text-gray-400`} />
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-            </p>
+            </div>
           </div>
         </div>
       </div>
@@ -209,9 +257,9 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
         </button>
       </div>
 
-      {/* SM-2 Rating Buttons */}
-      {showActions && sm2Rating && flipped && (
-        <div className="grid grid-cols-4 gap-2 mt-4">
+      {/* SM-2 Rating Buttons — always visible, disabled when not flipped */}
+      {showActions && sm2Rating && (
+        <div className={`grid grid-cols-4 gap-2 mt-4 transition-opacity duration-300 ${flipped ? "opacity-100" : "opacity-30 pointer-events-none"}`}>
           <button
             onClick={(e) => handleSM2Rate(e, Rating.Again)}
             className="flex flex-col items-center px-3 py-3 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded-xl font-medium hover:bg-red-200 dark:hover:bg-red-900 transition-colors"

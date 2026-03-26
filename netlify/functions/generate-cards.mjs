@@ -8,7 +8,7 @@ export default async (req) => {
   }
 
   try {
-    const { content, category } = await req.json();
+    const { content, category, existingTopics } = await req.json();
 
     if (!content || content.trim().length === 0) {
       return new Response(JSON.stringify({ error: "No content provided" }), {
@@ -24,15 +24,43 @@ Generate flashcards as a JSON array. Each flashcard should have:
 - "category": The subject area this belongs to (e.g., "Biology", "Chemistry", "Music Theory", "Economics", "Nursing", "Psychology", etc.)
 - "difficulty": One of: "easy", "medium", "hard"
 
+CARD TYPE MIX — Adapt question styles to the subject matter:
+
+For MEDICAL/NURSING/BIOLOGY content, emphasize:
+- Clinical scenarios: "A patient presents with X. What is the most likely diagnosis?"
+- Mechanism: "What is the mechanism by which X causes Y?"
+- Gap fill: "_____ is the enzyme that catalyzes..."
+- Drug/treatment: "What is the first-line treatment for X?"
+- Differential: "How do you distinguish X from Y?"
+Mix: 35% clinical/applied, 30% gap fill, 20% mechanism, 15% direct
+
+For MATH/PHYSICS/CHEMISTRY content, emphasize:
+- Problem setup: "Given X, calculate/determine Y"
+- Conceptual: "Why does X happen in terms of Y?"
+- Gap fill: "The formula for X is ______"
+- Compare: "How does X differ from Y?"
+Mix: 30% problem/calculation, 30% conceptual, 25% gap fill, 15% compare
+
+For HUMANITIES/HISTORY/LAW content, emphasize:
+- Cause/effect: "What led to X?" / "What was the result of Y?"
+- Significance: "Why is X significant?"
+- Compare: "How did X differ from Y?"
+- Gap fill: "The _____ of 1776 established..."
+Mix: 30% cause/effect, 25% significance, 25% gap fill, 20% compare
+
+For all other subjects, use a balanced mix:
+- 30% gap fill, 30% application, 40% direct concept questions
+
 Rules:
 - Create 1 flashcard per distinct concept/fact in the content
+- NEVER create duplicate or near-duplicate cards — each card must test a unique concept
 - Questions should test understanding, not just recall
-- Include key terms and their definitions
-- For tables and lists, create cards that test knowledge of the data
+- For gap-fill cards, put "______" in the front where the key term goes, and the answer is the missing term plus context
 - For processes, ask about steps and mechanisms
 - For comparisons, highlight the differences
 - Handle special characters (musical notation, math symbols, etc.) naturally
 ${category ? `- Focus only on content related to: ${category}` : ""}
+${existingTopics ? `- IMPORTANT: These topics have ALREADY been covered in other cards. Do NOT create cards about them: ${existingTopics}` : ""}
 
 Return ONLY a valid JSON array, no markdown fences, no other text. Start with [ and end with ].`;
 

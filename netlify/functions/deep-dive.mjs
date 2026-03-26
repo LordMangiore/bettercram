@@ -65,7 +65,8 @@ export default async (req) => {
       },
       body: JSON.stringify({
         query: searchQuery,
-        limit: 5,
+        limit: 8,
+        scrapeOptions: { formats: ["markdown"] },
       }),
     });
 
@@ -76,7 +77,14 @@ export default async (req) => {
       const searchData = await searchRes.json();
       if (searchData.success && searchData.data) {
         // Search gives us URLs — scrape the top 2 for content
-        const urlsToScrape = searchData.data.slice(0, 2);
+        // Use inline markdown from search if available, scrape top 4 otherwise
+        for (const item of searchData.data) {
+          if (item.markdown && item.markdown.length > 100) {
+            webContent += `\n\nSource: ${item.title || item.url}\n${item.markdown.slice(0, 3000)}`;
+            sources.push({ title: item.title || item.url, url: item.url });
+          }
+        }
+        const urlsToScrape = sources.length < 3 ? searchData.data.filter(d => !d.markdown || d.markdown.length < 100).slice(0, 4) : [];
         const scrapeResults = await Promise.allSettled(
           urlsToScrape.map(async (item) => {
             const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
@@ -100,7 +108,7 @@ export default async (req) => {
         for (const r of scrapeResults) {
           const result = r.status === "fulfilled" ? r.value : null;
           if (result && result.markdown) {
-            webContent += `\n\nSource: ${result.title}\n${result.markdown.slice(0, 2000)}`;
+            webContent += `\n\nSource: ${result.title}\n${result.markdown.slice(0, 3000)}`;
             sources.push({ title: result.title, url: result.url });
           }
         }

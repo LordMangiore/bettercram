@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import FlashCard from "./FlashCard";
 import { ShuffleIcon, ChevronLeftIcon, ChevronRightIcon } from "./Icons";
 
-export default function FlipMode({ cards }) {
+export default function FlipMode({ cards, onRegenCard }) {
   const [index, setIndex] = useState(0);
   const [deck, setDeck] = useState(cards);
   const [shuffled, setShuffled] = useState(false);
@@ -98,7 +98,7 @@ export default function FlipMode({ cards }) {
           className={slideDir === "left" ? "animate-slide-out-left" : slideDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
           onAnimationEnd={handleSlideEnd}
         >
-          <FlashCard card={card} cardKey={`flip-${index}-${card.front.slice(0, 20)}`} />
+          <FlashCard card={card} cardKey={`flip-${index}-${card.front.slice(0, 20)}`} onRegenCard={onRegenCard} />
         </div>
       </div>
 

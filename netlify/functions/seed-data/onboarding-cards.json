@@ -99,8 +99,50 @@
   },
   {
     "id": "onb-15",
+    "front": "What's the difference between Regenerate and Add More cards?",
+    "back": "Regenerate replaces your current cards with a fresh set from the same source. Add More keeps your existing cards and generates additional ones — great for expanding coverage without losing progress on cards you've already studied.",
+    "category": "Your Content",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-16",
+    "front": "Why does BetterCram use FSRS instead of simple flashcard review?",
+    "back": "FSRS is a next-gen spaced repetition algorithm that's more accurate than SM-2 (what Anki uses). It calculates the optimal moment to review each card based on your memory stability — so you study less but remember more.",
+    "category": "Study Modes",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-17",
+    "front": "Why are there two different AI voices?",
+    "back": "Nova (Hope) is your conversational tutor — she talks with you in real-time, asks questions, and adapts to your answers. Sage is your narrator — he reads explanations clearly and consistently. Different jobs, different voices.",
+    "category": "Nova",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-18",
+    "front": "Why does the card glow when you're on a streak?",
+    "back": "The heat glow is a visual reward for staying focused. Every 5 correct answers in a row, the card gets hotter — from warm orange to white-hot. It's gamification that makes studying feel less like a chore.",
+    "category": "Pro Tips",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-19",
+    "front": "Why is there a free tier?",
+    "back": "We believe core studying tools should be accessible to everyone. Flip cards, spaced repetition, and community decks are free forever. AI features like card generation, tutoring, and voice cost us money to run — that's what the paid tiers cover.",
+    "category": "Getting Started",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-20",
+    "front": "What happens to your progress if you cancel?",
+    "back": "Your cards, decks, and study progress stay in your account. You just lose access to AI features. You can always come back and pick up where you left off.",
+    "category": "Getting Started",
+    "difficulty": "easy"
+  },
+  {
+    "id": "onb-21",
     "front": "You're ready to start studying! What should you do first?",
-    "back": "Head to Library (in the menu) and either: 1) Browse Community to find a deck for your subject, 2) Create a New Deck from your own Google Doc/Sheet, or 3) Start studying this deck using the different modes above! Try the Audio tab — your first podcast is already ready to play.",
+    "back": "Head to Library and either: Browse Community to find a deck for your subject, create a New Deck from your own Google Doc or Sheet, or start studying this deck using the different modes above! Try the Audio tab — your first podcast is already ready to play.",
     "category": "Getting Started",
     "difficulty": "easy"
   }
