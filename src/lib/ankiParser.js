@@ -97,66 +97,108 @@ export function sanitizeSvg(svg) {
  * Detect and parse Image Occlusion cards from Anki note fields.
  * Works with IO Enhanced (add-on) and native IO (Anki 23.10+).
  *
+ * IO Enhanced stores masks as separate SVG files referenced via <img> tags:
+ *   Field 2: <img src="base-image.png" />           — base image
+ *   Field 3: <img src="...-ao-N-Q.svg" />           — question mask (hides active region)
+ *   Field 9: <img src="...-ao-N-A.svg" />           — answer mask (reveals active region)
+ *   Field 10: <img src="...-ao-O.svg" />            — original mask (all regions)
+ *
+ * Inline SVG format (some decks embed SVG directly in fields) is also supported.
+ *
  * @param {string[]} fields - The note's fields split by \x1f
- * @returns {object|null} - { imageFilename, maskSvg, header, width, height } or null if not IO
+ * @returns {object|null} - Parsed occlusion data or null if not IO
  */
 export function parseOcclusion(fields) {
   if (!fields || fields.length < 2) return null;
 
-  // Strategy: find the field with an <img> and the field with an <svg>
-  let imageField = null;
-  let svgField = null;
+  // Collect all image references and SVG content from all fields
+  let baseImage = null;
+  let questionMask = null;  // Q SVG — shows which region to identify
+  let answerMask = null;    // A SVG — reveals the answer
+  let inlineSvg = null;     // For decks that embed SVG directly
   let headerText = "";
 
   for (const field of fields) {
-    const hasImg = /<img[^>]+src=/i.test(field);
-    const hasSvg = /<svg[\s>]/i.test(field);
+    const imgMatch = field.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (!imgMatch) {
+      // Check for inline SVG
+      if (/<svg[\s>]/i.test(field) && /<(rect|ellipse|circle|polygon|path)[\s>]/i.test(field)) {
+        const svgMatch = field.match(/<svg[\s\S]*?<\/svg>/i);
+        if (svgMatch) inlineSvg = sanitizeSvg(svgMatch[0]);
+      }
+      continue;
+    }
 
-    if (hasImg && !imageField) imageField = field;
-    if (hasSvg && !svgField) svgField = field;
-  }
+    const filename = imgMatch[1];
 
-  // Not an IO card if we don't have both image and SVG
-  if (!imageField || !svgField) return null;
-
-  // Verify SVG contains actual mask shapes (not just any SVG)
-  const hasShapes = /<(rect|ellipse|circle|polygon|path)[\s>]/i.test(svgField);
-  if (!hasShapes) return null;
-
-  // Extract image filename
-  const imgMatch = imageField.match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (!imgMatch) return null;
-  const imageFilename = imgMatch[1];
-
-  // Extract SVG content (the full <svg>...</svg> block)
-  const svgMatch = svgField.match(/<svg[\s\S]*?<\/svg>/i);
-  if (!svgMatch) return null;
-  const maskSvg = sanitizeSvg(svgMatch[0]);
-
-  // Extract dimensions from SVG viewBox or width/height attributes
-  let width = 0, height = 0;
-  const viewBoxMatch = maskSvg.match(/viewBox=["'](\d+)\s+(\d+)\s+(\d+)\s+(\d+)["']/i);
-  if (viewBoxMatch) {
-    width = parseInt(viewBoxMatch[3]);
-    height = parseInt(viewBoxMatch[4]);
-  } else {
-    const wMatch = maskSvg.match(/width=["'](\d+)/i);
-    const hMatch = maskSvg.match(/height=["'](\d+)/i);
-    if (wMatch) width = parseInt(wMatch[1]);
-    if (hMatch) height = parseInt(hMatch[1]);
-  }
-
-  // Look for header text in other fields (not the image or SVG field)
-  for (const field of fields) {
-    if (field === imageField || field === svgField) continue;
-    const text = stripHtml(field).trim();
-    if (text && text.length > 0 && text.length < 200) {
-      headerText = text;
-      break;
+    // Detect IO Enhanced file naming: *-ao-N-Q.svg, *-ao-N-A.svg, *-ao-O.svg
+    if (/\-ao\-\d+\-Q\.svg$/i.test(filename)) {
+      questionMask = filename;
+    } else if (/\-ao\-\d+\-A\.svg$/i.test(filename)) {
+      answerMask = filename;
+    } else if (/\-ao\-O\.svg$/i.test(filename)) {
+      // Original mask — skip (we use Q/A pair instead)
+    } else if (/\.(png|jpg|jpeg|gif|webp)$/i.test(filename)) {
+      if (!baseImage) baseImage = filename;
     }
   }
 
-  return { imageFilename, maskSvg, header: headerText, width, height };
+  // IO Enhanced format: base image + Q/A SVG mask files
+  if (baseImage && questionMask) {
+    // Find header text from non-image fields
+    for (const field of fields) {
+      if (/<img/i.test(field) || /<svg/i.test(field)) continue;
+      const text = stripHtml(field).trim();
+      if (text && text.length > 1 && text.length < 200 && !/^[a-f0-9\-]+-ao-\d+$/i.test(text) && !/^[a-f0-9\-]{20,}$/i.test(text)) {
+        headerText = text;
+        break;
+      }
+    }
+
+    return {
+      type: "file",  // masks are separate SVG files
+      imageFilename: baseImage,
+      questionMaskFilename: questionMask,
+      answerMaskFilename: answerMask,
+      header: headerText,
+    };
+  }
+
+  // Inline SVG format: base image + embedded SVG in another field
+  if (baseImage && inlineSvg) {
+    // Extract dimensions from SVG
+    let width = 0, height = 0;
+    const viewBoxMatch = inlineSvg.match(/viewBox=["'](\d+)\s+(\d+)\s+(\d+)\s+(\d+)["']/i);
+    if (viewBoxMatch) {
+      width = parseInt(viewBoxMatch[3]);
+      height = parseInt(viewBoxMatch[4]);
+    } else {
+      const wMatch = inlineSvg.match(/width=["'](\d+)/i);
+      const hMatch = inlineSvg.match(/height=["'](\d+)/i);
+      if (wMatch) width = parseInt(wMatch[1]);
+      if (hMatch) height = parseInt(hMatch[1]);
+    }
+
+    for (const field of fields) {
+      if (/<img/i.test(field) || /<svg/i.test(field)) continue;
+      const text = stripHtml(field).trim();
+      if (text && text.length > 1 && text.length < 200) {
+        headerText = text;
+        break;
+      }
+    }
+
+    return {
+      type: "inline",  // mask is embedded SVG
+      imageFilename: baseImage,
+      maskSvg: inlineSvg,
+      header: headerText,
+      width,
+      height,
+    };
+  }
+
+  return null;
 }
 
 /** Extract image and audio filenames from HTML content. */
@@ -264,30 +306,54 @@ export async function parseAnkiFile(file, onProgress = () => {}) {
     // Check for Image Occlusion card (detect before stripping HTML)
     const occlusion = parseOcclusion(fields);
     if (occlusion) {
-      // IO card — extract image ref and preserve SVG mask
-      referencedMedia.add(occlusion.imageFilename);
-      // Also extract any other media refs from all fields
+      // Collect all media refs from all fields
       for (const field of fields) {
         const refs = extractMediaRefs(field);
         [...refs.images, ...refs.audio].forEach(f => referencedMedia.add(f));
       }
 
       const primaryCategory = extractCategory(tags);
-      cards.push({
-        front: occlusion.header || "Identify the highlighted region",
-        back: stripHtml(back) || "(see image)",
-        category: primaryCategory,
-        difficulty: "medium",
-        frontImages: [occlusion.imageFilename],
-        backImages: [occlusion.imageFilename],
-        frontAudio: [],
-        backAudio: [],
-        occlusion: {
-          maskSvg: occlusion.maskSvg,
-          originalWidth: occlusion.width,
-          originalHeight: occlusion.height,
-        },
-      });
+
+      if (occlusion.type === "file") {
+        // IO Enhanced format: Q/A masks are separate SVG files
+        referencedMedia.add(occlusion.imageFilename);
+        if (occlusion.questionMaskFilename) referencedMedia.add(occlusion.questionMaskFilename);
+        if (occlusion.answerMaskFilename) referencedMedia.add(occlusion.answerMaskFilename);
+
+        cards.push({
+          front: occlusion.header || "Identify the highlighted region",
+          back: stripHtml(back) || "(see image)",
+          category: primaryCategory,
+          difficulty: "medium",
+          frontImages: [occlusion.imageFilename],
+          backImages: [occlusion.imageFilename],
+          frontAudio: [],
+          backAudio: [],
+          occlusion: {
+            type: "file",
+            questionMaskFilename: occlusion.questionMaskFilename,
+            answerMaskFilename: occlusion.answerMaskFilename,
+          },
+        });
+      } else {
+        // Inline SVG format
+        cards.push({
+          front: occlusion.header || "Identify the highlighted region",
+          back: stripHtml(back) || "(see image)",
+          category: primaryCategory,
+          difficulty: "medium",
+          frontImages: [occlusion.imageFilename],
+          backImages: [occlusion.imageFilename],
+          frontAudio: [],
+          backAudio: [],
+          occlusion: {
+            type: "inline",
+            maskSvg: occlusion.maskSvg,
+            originalWidth: occlusion.width,
+            originalHeight: occlusion.height,
+          },
+        });
+      }
       continue;
     }
 
@@ -442,11 +508,22 @@ export async function uploadAnkiMedia(media, onProgress = () => {}) {
  * Replace media references in cards with server URLs.
  */
 export function resolveCardMedia(cards, urlMap) {
-  return cards.map(card => ({
-    ...card,
-    frontImages: card.frontImages?.map(f => urlMap.get(f)).filter(Boolean) || [],
-    backImages: card.backImages?.map(f => urlMap.get(f)).filter(Boolean) || [],
-    frontAudio: card.frontAudio?.map(f => urlMap.get(f)).filter(Boolean) || [],
-    backAudio: card.backAudio?.map(f => urlMap.get(f)).filter(Boolean) || [],
-  }));
+  return cards.map(card => {
+    const resolved = {
+      ...card,
+      frontImages: card.frontImages?.map(f => urlMap.get(f)).filter(Boolean) || [],
+      backImages: card.backImages?.map(f => urlMap.get(f)).filter(Boolean) || [],
+      frontAudio: card.frontAudio?.map(f => urlMap.get(f)).filter(Boolean) || [],
+      backAudio: card.backAudio?.map(f => urlMap.get(f)).filter(Boolean) || [],
+    };
+    // Resolve occlusion mask URLs for IO Enhanced file-based masks
+    if (card.occlusion?.type === "file") {
+      resolved.occlusion = {
+        ...card.occlusion,
+        questionMaskUrl: urlMap.get(card.occlusion.questionMaskFilename) || null,
+        answerMaskUrl: urlMap.get(card.occlusion.answerMaskFilename) || null,
+      };
+    }
+    return resolved;
+  });
 }

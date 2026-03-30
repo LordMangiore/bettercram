@@ -238,13 +238,22 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               {card.occlusion && card.frontImages?.[0] ? (
                 <div className="mt-3 relative inline-block w-full" onClick={e => e.stopPropagation()}>
                   <img src={card.frontImages[0]} alt="" className="max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain" />
-                  <div
-                    className="absolute inset-0 rounded-lg"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(
-                      card.occlusion.maskSvg.replace(/<svg/, '<svg preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%"'),
-                      { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ["rect", "ellipse", "circle", "polygon", "path", "g"], ADD_ATTR: ["viewBox", "preserveAspectRatio"] }
-                    ) }}
-                  />
+                  {card.occlusion.type === "file" && card.occlusion.questionMaskFilename && (
+                    <img
+                      src={card.occlusion.questionMaskUrl || card.occlusion.questionMaskFilename}
+                      alt=""
+                      className="absolute inset-0 max-h-64 max-w-full rounded-lg object-contain"
+                    />
+                  )}
+                  {card.occlusion.type === "inline" && card.occlusion.maskSvg && (
+                    <div
+                      className="absolute inset-0 rounded-lg"
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(
+                        card.occlusion.maskSvg.replace(/<svg/, '<svg preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%"'),
+                        { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ["rect", "ellipse", "circle", "polygon", "path", "g"], ADD_ATTR: ["viewBox", "preserveAspectRatio"] }
+                      ) }}
+                    />
+                  )}
                 </div>
               ) : card.frontImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -290,7 +299,18 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
                   ? <div className={`${textSize(card.back)} text-gray-800 dark:text-gray-100 math-content`} dangerouslySetInnerHTML={{ __html: math.html }} />
                   : <p className={`${textSize(card.back)} text-gray-800 dark:text-gray-100`}>{card.back}</p>;
               })()}
-              {card.backImages?.length > 0 && (
+              {card.occlusion && card.backImages?.[0] ? (
+                <div className="mt-3 relative inline-block w-full" onClick={e => e.stopPropagation()}>
+                  <img src={card.backImages[0]} alt="" className="max-h-64 max-w-full rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain" />
+                  {card.occlusion.type === "file" && card.occlusion.answerMaskUrl && (
+                    <img
+                      src={card.occlusion.answerMaskUrl}
+                      alt=""
+                      className="absolute inset-0 max-h-64 max-w-full rounded-lg object-contain"
+                    />
+                  )}
+                </div>
+              ) : card.backImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {card.backImages.map((src, i) => (
                     <img key={i} src={src} alt="" className="max-h-48 rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain" onClick={e => e.stopPropagation()} />

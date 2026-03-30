@@ -168,7 +168,25 @@ describe("sanitizeSvg", () => {
 });
 
 describe("parseOcclusion", () => {
-  it("detects IO card with image + SVG mask fields", () => {
+  it("detects IO Enhanced file-based format (Q/A SVG mask files)", () => {
+    const fields = [
+      "abc123-ao-1",                                         // note ID
+      "",                                                     // header
+      '<img src="anatomy.png" />',                           // base image
+      '<img src="abc123-ao-1-Q.svg" />',                     // question mask
+      "", "", "", "", "",                                      // empty fields
+      '<img src="abc123-ao-1-A.svg" />',                     // answer mask
+      '<img src="abc123-ao-O.svg" />',                       // original mask
+    ];
+    const result = parseOcclusion(fields);
+    expect(result).not.toBeNull();
+    expect(result.type).toBe("file");
+    expect(result.imageFilename).toBe("anatomy.png");
+    expect(result.questionMaskFilename).toBe("abc123-ao-1-Q.svg");
+    expect(result.answerMaskFilename).toBe("abc123-ao-1-A.svg");
+  });
+
+  it("detects inline SVG format", () => {
     const fields = [
       '<img src="anatomy.png">',
       '<svg viewBox="0 0 800 600"><rect x="100" y="200" width="50" height="50" fill="black"/></svg>',
@@ -176,6 +194,7 @@ describe("parseOcclusion", () => {
     ];
     const result = parseOcclusion(fields);
     expect(result).not.toBeNull();
+    expect(result.type).toBe("inline");
     expect(result.imageFilename).toBe("anatomy.png");
     expect(result.maskSvg).toContain("<rect");
     expect(result.header).toBe("Identify the structure");
@@ -188,7 +207,7 @@ describe("parseOcclusion", () => {
     expect(parseOcclusion(fields)).toBeNull();
   });
 
-  it("returns null for cards with SVG but no shapes", () => {
+  it("returns null for cards with inline SVG but no shapes", () => {
     const fields = [
       '<img src="photo.jpg">',
       '<svg><text>Just text</text></svg>',
@@ -201,30 +220,32 @@ describe("parseOcclusion", () => {
     expect(parseOcclusion(fields)).toBeNull();
   });
 
-  it("extracts dimensions from width/height when no viewBox", () => {
+  it("extracts dimensions from width/height when no viewBox (inline)", () => {
     const fields = [
       '<img src="img.png">',
       '<svg width="400" height="300"><rect x="10" y="10" width="20" height="20"/></svg>',
     ];
     const result = parseOcclusion(fields);
+    expect(result.type).toBe("inline");
     expect(result.width).toBe(400);
     expect(result.height).toBe(300);
   });
 
-  it("handles fields in any order", () => {
+  it("skips note ID field as header (hex hash pattern)", () => {
     const fields = [
-      "Header text",
-      '<svg viewBox="0 0 100 100"><ellipse cx="50" cy="50" rx="20" ry="10"/></svg>',
-      '<img src="diagram.jpg">',
+      "c8bf008bdcab4ebc8f8b3714301e1738-ao-1",
+      "",
+      '<img src="img.png" />',
+      '<img src="c8bf-ao-1-Q.svg" />',
+      "", "", "", "", "",
+      '<img src="c8bf-ao-1-A.svg" />',
+      '<img src="c8bf-ao-O.svg" />',
     ];
     const result = parseOcclusion(fields);
-    expect(result).not.toBeNull();
-    expect(result.imageFilename).toBe("diagram.jpg");
-    expect(result.maskSvg).toContain("<ellipse");
-    expect(result.header).toBe("Header text");
+    expect(result.header).toBe("");
   });
 
-  it("sanitizes SVG in the output", () => {
+  it("sanitizes inline SVG in the output", () => {
     const fields = [
       '<img src="img.png">',
       '<svg viewBox="0 0 100 100"><script>alert(1)</script><rect x="0" y="0" width="10" height="10"/></svg>',
