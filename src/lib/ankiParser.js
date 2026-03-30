@@ -322,7 +322,7 @@ export async function parseAnkiFile(file, onProgress = () => {}) {
 
         cards.push({
           front: occlusion.header || "Identify the highlighted region",
-          back: stripHtml(back) || "(see image)",
+          back: stripHtml(back) || "",
           category: primaryCategory,
           difficulty: "medium",
           frontImages: [occlusion.imageFilename],
@@ -339,7 +339,7 @@ export async function parseAnkiFile(file, onProgress = () => {}) {
         // Inline SVG format
         cards.push({
           front: occlusion.header || "Identify the highlighted region",
-          back: stripHtml(back) || "(see image)",
+          back: stripHtml(back) || "",
           category: primaryCategory,
           difficulty: "medium",
           frontImages: [occlusion.imageFilename],
