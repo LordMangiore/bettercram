@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || "AIzaSyBxVgNXJt2cqZoTmJzImfnDJ_-poqoz01A";
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
 const IDENTITY_URL = "https://identitytoolkit.googleapis.com/v1";
 
 /**
@@ -10,7 +10,7 @@ const IDENTITY_URL = "https://identitytoolkit.googleapis.com/v1";
  */
 async function ensureFirebaseUser(email) {
   // Deterministic password from email + secret (only used as a shadow auth bridge)
-  const secret = process.env.FIREBASE_PASS_SECRET || "bettercram_otp_bridge_2024";
+  const secret = process.env.FIREBASE_PASS_SECRET;
   const encoder = new TextEncoder();
   const keyData = await crypto.subtle.importKey(
     "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
