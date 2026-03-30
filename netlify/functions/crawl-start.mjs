@@ -43,6 +43,7 @@ export default async (req) => {
         limit: Math.min(limit, 50),
         scrapeOptions: {
           formats: ["markdown"],
+          waitFor: 3000,
         },
       }),
     });

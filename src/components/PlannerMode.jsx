@@ -1,4 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { loadActivity } from "../api";
+import ActivityCalendar from "./ActivityCalendar";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -244,6 +246,31 @@ function migratePlan(plan, decks, activeDeckId) {
 // ═══════════════════════════════════════════════════════════════
 // Main component
 // ═══════════════════════════════════════════════════════════════
+
+function ActivityCalendarSection({ streak }) {
+  const [activity, setActivity] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    loadActivity(365).then(data => {
+      setActivity(data.activity || []);
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, []);
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Study Activity</h3>
+      {loaded ? (
+        <ActivityCalendar activity={activity} streak={streak} />
+      ) : (
+        <div className="h-24 flex items-center justify-center">
+          <i className="fa-solid fa-spinner fa-spin text-gray-400" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PlannerMode({ cards, progress, studyPlan, onUpdatePlan, onStartStudy, decks = [], activeDeckId }) {
   const plan = useMemo(() => migratePlan(studyPlan, decks, activeDeckId), [studyPlan, decks, activeDeckId]);
@@ -711,6 +738,9 @@ export default function PlannerMode({ cards, progress, studyPlan, onUpdatePlan, 
       {/* ═══════════════ OVERVIEW TAB ═══════════════ */}
       {activeTab === "overview" && !showNewTestForm && (
         <div className="space-y-5">
+          {/* Activity Calendar */}
+          <ActivityCalendarSection streak={streak} />
+
           {tests.length === 0 ? (
             /* Empty state */
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 border border-gray-200 dark:border-gray-700 shadow-sm text-center">

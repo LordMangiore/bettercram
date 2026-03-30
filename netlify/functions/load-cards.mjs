@@ -1,7 +1,9 @@
 import { getStore } from "@netlify/blobs";
 
 function getUserId(req) {
-  return req.headers.get("x-user-id") || "default";
+  const id = req.headers.get("x-user-id");
+  if (!id) throw new Error("Unauthorized");
+  return id;
 }
 
 export default async (req) => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bettercram-1774486856397';
+const CACHE_NAME = 'bettercram-1774894760286';
 const SHELL_URLS = ['/', '/index.html'];
 
 // Notification preferences (updated via postMessage from the app)
@@ -21,37 +21,108 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network first for API calls
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
+
+  // Never intercept API calls or external services
   if (event.request.url.includes('/.netlify/functions/') ||
       event.request.url.includes('googleapis.com') ||
+      event.request.url.includes('firestore.googleapis.com') ||
+      event.request.url.includes('identitytoolkit.googleapis.com') ||
       event.request.url.includes('api.firecrawl.dev') ||
       event.request.url.includes('api.anthropic.com') ||
       event.request.url.includes('api.elevenlabs.io')) {
     return;
   }
 
-  // Cache first for static assets
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        if (response.ok && event.request.method === 'GET') {
+  // Navigation requests (page loads) — network first, fall back to cached shell
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put('/', clone));
+        }
+        return response;
+      }).catch(() => caches.match('/'))
+    );
+    return;
+  }
+
+  // JS/CSS with content hashes (e.g. index-DFC6M3rk.js) — network first, MIME-validated cache
+  const url = event.request.url;
+  if (url.match(/\.(js|css)(\?|$)/)) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        const contentType = response.headers.get('content-type') || '';
+        const isValidJS = url.includes('.js') && (contentType.includes('javascript') || contentType.includes('wasm'));
+        const isValidCSS = url.includes('.css') && contentType.includes('css');
+        // Only cache if the MIME type matches — never cache HTML fallbacks as JS
+        if (response.ok && response.status === 200 && (isValidJS || isValidCSS)) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       }).catch(() => {
-        // Offline fallback
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
+        // Offline fallback — only return cached version if it has the right MIME type
+        return caches.match(event.request).then((cached) => {
+          if (cached) {
+            const ct = cached.headers.get('content-type') || '';
+            if (url.includes('.js') && !ct.includes('javascript')) return undefined; // don't serve HTML as JS
+            if (url.includes('.css') && !ct.includes('css')) return undefined;
+          }
+          return cached;
+        });
+      })
+    );
+    return;
+  }
+
+  // Static assets (images, fonts, icons, audio) — cache first
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      return cached || fetch(event.request).then((response) => {
+        if (response.ok && response.status === 200) {
+          // Don't cache HTML responses for non-navigation requests (SPA fallback trap)
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('text/html')) return response; // don't cache, just return
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
-      });
+        return response;
+      }).catch(() => undefined);
     })
   );
 });
 
 // --- Push Notification Support ---
 
-// Handle messages from the app
+// Handle real push events from server
+self.addEventListener('push', (event) => {
+  let data = { title: 'BetterCram', body: 'Time to study!' };
+  try {
+    if (event.data) data = event.data.json();
+  } catch {
+    try { data = { title: 'BetterCram', body: event.data.text() }; } catch {}
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'BetterCram', {
+      body: data.body || 'Time to study!',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: data.tag || 'study-reminder',
+      renotify: true,
+      data: data,
+      actions: [
+        { action: 'study', title: 'Study Now' },
+        { action: 'dismiss', title: 'Later' }
+      ]
+    })
+  );
+});
+
+// Handle messages from the app (legacy local notifications)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'UPDATE_NOTIFICATION_PREFS') {
     notificationPrefs = event.data.prefs;
@@ -69,44 +140,6 @@ self.addEventListener('message', (event) => {
     });
   }
 });
-
-// Periodic sync (Chrome 80+, limited support)
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'study-reminder') {
-    event.waitUntil(showStudyReminder(notificationPrefs));
-  }
-});
-
-async function showStudyReminder(prefs) {
-  const messages = [];
-  if (!prefs || !prefs.enabled) return;
-
-  if (prefs.cardsDue) {
-    messages.push('You have cards due today! Keep your streak going.');
-  }
-  if (prefs.streakReminder) {
-    messages.push("Don't forget to study today — keep that streak alive!");
-  }
-  if (prefs.examCountdown) {
-    messages.push('Your exam is approaching. Time to review!');
-  }
-
-  const body = messages.length > 0
-    ? messages[Math.floor(Math.random() * messages.length)]
-    : 'Time to study! Open BetterCram to review your cards.';
-
-  return self.registration.showNotification('BetterCram', {
-    body: body,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-    tag: 'study-reminder',
-    renotify: true,
-    actions: [
-      { action: 'study', title: 'Study Now' },
-      { action: 'dismiss', title: 'Later' },
-    ],
-  });
-}
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {

@@ -1,7 +1,10 @@
 import { getStore } from "@netlify/blobs";
+import { setDoc } from "./lib/firestore.mjs";
 
 function getUserId(req) {
-  return req.headers.get("x-user-id") || "default";
+  const id = req.headers.get("x-user-id");
+  if (!id) throw new Error("Unauthorized");
+  return id;
 }
 
 export default async (req) => {
@@ -12,12 +15,18 @@ export default async (req) => {
   try {
     const { plan } = await req.json();
     const userId = getUserId(req);
-    const store = getStore("flashcards");
 
-    await store.setJSON(`${userId}-study-plan`, {
+    const planData = {
       plan,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    // Dual-write: Firestore + Blob
+    const store = getStore("flashcards");
+    await Promise.all([
+      setDoc(`users/${userId}/studyPlan`, planData),
+      store.setJSON(`${userId}-study-plan`, planData),
+    ]);
 
     return new Response(
       JSON.stringify({ success: true }),

@@ -51,7 +51,7 @@ export default function TermsOfService({ dark, onBack }) {
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>4. Subscription &amp; Payment Terms</h2>
             <ul className="list-disc pl-6 space-y-2">
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Free Trial:</strong> New users receive a 7-day free trial with full access to all features. No credit card is required to start the trial.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Free Trial:</strong> New users receive a 30-day free trial with full access to all features. No credit card is required to start the trial.</li>
               <li><strong className={dark ? "text-white" : "text-gray-900"}>Plans:</strong> BetterCram offers a Starter plan and a Pro plan, available on monthly or annual billing cycles.</li>
               <li><strong className={dark ? "text-white" : "text-gray-900"}>Billing:</strong> All payments are processed securely through Stripe. Subscriptions automatically renew at the end of each billing period unless cancelled.</li>
               <li><strong className={dark ? "text-white" : "text-gray-900"}>Cancellation:</strong> You can cancel your subscription at any time through the billing portal. You will retain access to paid features until the end of your current billing period.</li>

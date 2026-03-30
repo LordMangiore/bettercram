@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useConversation } from "@11labs/react";
+import { computeExperienceWeight, generateEmpathyPrompt, getTimeContext, getObserverBrief, buildEmpathyContext } from "../lib/empathyEngine";
 
 const AGENT_ID = "agent_3101kmc104q3f1ksrtqgzwhxjj1v";
 
@@ -13,7 +14,7 @@ function buildDeckContext(cards, maxCards = 50) {
   return { categories, cardList, total: cards.length };
 }
 
-export default function VoiceTutorMode({ cards, deckName }) {
+export default function VoiceTutorMode({ cards, deckName, progress = {}, sessionStats = null, activeCategory = "All" }) {
   const [status, setStatus] = useState("idle"); // idle | connecting | connected | error
   const [messages, setMessages] = useState([]);
   const [currentCard, setCurrentCard] = useState(null);
@@ -53,10 +54,48 @@ export default function VoiceTutorMode({ cards, deckName }) {
         // Build dynamic context from current deck + optional card
         const { categories, cardList, total } = buildDeckContext(cards);
 
+        // Compute empathy state from study data
+        const empathyState = computeExperienceWeight(cards, progress, sessionStats);
+        const timeContext = getTimeContext();
+        console.log("Nova Empathy Engine:", empathyState);
+
+        // Observer Pass: Claude assesses the student's state and writes a perspective brief
+        // This runs in parallel with mic permission — doesn't add latency
+        const observerBriefPromise = getObserverBrief({
+          empathyState,
+          card,
+          deckName,
+          categories,
+          userProfile: typeof window !== "undefined" ? (() => {
+            try { return JSON.parse(localStorage.getItem("bc-user-profile") || "null"); } catch { return null; }
+          })() : null,
+        });
+
+        // Wait for the observer brief (or fall back to static after 3s)
+        let observerBrief = null;
+        try {
+          observerBrief = await Promise.race([
+            observerBriefPromise,
+            new Promise(resolve => setTimeout(() => resolve(null), 3000)),
+          ]);
+        } catch {}
+
+        const empathyPrompt = buildEmpathyContext(empathyState, observerBrief);
+        if (observerBrief) {
+          console.log("Nova Observer Brief:", observerBrief.slice(0, 100) + "...");
+        } else {
+          console.log("Nova: Using static empathy prompt (observer timed out or failed)");
+        }
+
+        // Build category context from recent study session
+        const categoryContext = activeCategory && activeCategory !== "All"
+          ? `\nSTUDY CONTEXT: The student was just studying "${activeCategory}" cards specifically. Focus your questions and discussion on ${activeCategory} topics. They switched to Voice Tutor from a study session on this category${sessionStats ? ` where they reviewed ${sessionStats.reviewed} cards with ${sessionStats.correct} correct and ${sessionStats.again} forgotten` : ""}.`
+          : "";
+
         let systemPrompt, firstMsg;
 
         if (card) {
-          systemPrompt = `You are an expert study tutor helping a student with their ${deckName || "study"} deck. The student is currently studying this flashcard:
+          systemPrompt = `You are Nova, an expert study tutor helping a student with their ${deckName || "study"} deck. The student opened you while looking at this flashcard:
 
 Question: ${card.front}
 Answer: ${card.back}
@@ -66,25 +105,100 @@ You also have access to their full study deck (${total} cards) covering: ${categ
 
 ${cardList}
 
-Start by asking the student what they know about the current topic. Use the Socratic method - ask probing questions before giving answers. Keep responses concise and conversational (you're speaking, not writing). Be encouraging but honest when answers are wrong. Highlight common exam traps and misconceptions.`;
-          firstMsg = `Hey! I see you're studying ${card.category}. Let me ask you - ${card.front.length > 100 ? "what do you know about this concept?" : card.front}`;
+${empathyPrompt}
+${timeContext ? `\nTIME CONTEXT: ${timeContext}` : ""}${categoryContext}
+
+CRITICAL — PROBLEM DISAMBIGUATION:
+The card above is context, not a contract. The student may want to discuss this card, OR they may have a completely different question — a homework problem, something from lecture, a concept that's confusing them that has nothing to do with this specific card. LISTEN to their first response before you assume what they need help with.
+
+Your opening should invite them to tell you what they're working on. Do NOT jump straight into quizzing them on the card. If their response is about the card, great — use it. If their response is about something else entirely, DROP the card context and focus on what they actually said. The worst thing you can do is answer a question they didn't ask.
+
+Once you understand their actual problem, ask clarifying questions BEFORE teaching:
+- What specifically is confusing? The concept, the math, the setup?
+- What have they tried so far?
+- Is this from a textbook, homework, or lecture?
+- What does the problem actually ask for?
+
+Only after you understand the real question should you shift into Socratic teaching. Keep responses concise and conversational (you're speaking, not writing). Highlight common exam traps and misconceptions.
+
+MID-CONVERSATION PIVOT DETECTION:
+Disambiguation isn't just for the opening. It's ongoing. Students change direction mid-conversation all the time:
+- They were working through acids, then suddenly ask about a homework problem
+- They say "actually, can I ask about something else?"
+- They start describing a new scenario that doesn't connect to what you were discussing
+- They seem frustrated and their answers stop making sense — they might be stuck on a different interpretation of the problem than you
+
+When you detect a pivot:
+1. STOP teaching the current topic. Don't try to bridge back to it.
+2. Acknowledge the shift: "Okay, different question — tell me more."
+3. Re-disambiguate: ask what they actually need before resuming.
+4. Do NOT assume you know what the new topic is from one sentence. Ask.
+
+When you detect confusion that might be a misaligned problem:
+1. Pause and check: "Wait — are we talking about the same thing? Tell me exactly what your problem is asking."
+2. Don't keep pushing your interpretation. Their confusion might be YOUR misunderstanding of their question.
+3. When in doubt, ask. It's always better to ask one more question than to teach the wrong thing for five minutes.
+
+PACING — MATCH THE STUDENT, NOT A METHOD:
+The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Read who they are right now, not who the method says they should be.`;
+
+          // Adapt first message based on empathy mode — always leave room for them to redirect
+          if (empathyState.mode === "nurture") {
+            firstMsg = `Hey! I see you're working on ${card.category}. What do you need help with? We can talk through this card, or if you've got something else on your mind, just tell me what's going on.`;
+          } else if (empathyState.mode === "challenge") {
+            firstMsg = `Hey! I see you're in ${card.category}. What are we working on? Want me to quiz you on this, or do you have something specific you're stuck on?`;
+          } else {
+            firstMsg = `Hey! I see you're studying ${card.category}. What do you want to work on? We can dig into this card, or if there's something else you need help with, I'm all ears.`;
+          }
         } else {
-          systemPrompt = `You are an expert study tutor helping a student with their ${deckName || "study"} deck. Their deck has ${total} cards covering: ${categories}.
+          systemPrompt = `You are Nova, an expert study tutor helping a student with their ${deckName || "study"} deck. Their deck has ${total} cards covering: ${categories}.
 
 Here are the study cards you should use to quiz and teach them:
 
 ${cardList}
 
-Your role:
-- Quiz the student on these topics using the Socratic method
-- Ask questions from the cards above, then evaluate their answers
-- Explain concepts clearly using analogies
-- Highlight common exam traps and misconceptions
-- Keep responses concise and conversational (you're speaking, not writing)
-- Be encouraging but honest when answers are wrong
+${empathyPrompt}
+${timeContext ? `\nTIME CONTEXT: ${timeContext}` : ""}${categoryContext}
 
-Start by asking what topic they want to focus on, or pick a random question from their deck to quiz them.`;
-          firstMsg = `Hey! I'm your study tutor for ${deckName || "this deck"}. I've got ${total} cards covering ${categories}. What topic do you want to work on, or should I quiz you on something random?`;
+CRITICAL — PROBLEM DISAMBIGUATION:
+The student hasn't selected a specific card. They may want you to quiz them, OR they may have their own question — homework, a concept from lecture, something they're stuck on that goes beyond the deck. LISTEN to what they say first.
+
+Your opening should invite them to tell you what they need. If they say "quiz me" or "pick something random," go ahead. But if they describe a specific problem or concept, focus entirely on that. Ask clarifying questions before teaching:
+- What specifically is tripping them up?
+- What have they tried?
+- What does the problem actually ask for?
+
+Keep responses concise and conversational (you're speaking, not writing). Highlight common exam traps and misconceptions.
+
+MID-CONVERSATION PIVOT DETECTION:
+Disambiguation isn't just for the opening. It's ongoing. Students change direction mid-conversation all the time:
+- They were working through one topic, then ask about something unrelated
+- They say "actually, can I ask about something else?"
+- They start describing a new scenario that doesn't connect to what you were discussing
+- They seem frustrated and their answers stop making sense — they might be stuck on a different interpretation than you
+
+When you detect a pivot:
+1. STOP teaching the current topic. Don't try to bridge back to it.
+2. Acknowledge the shift: "Okay, different question — tell me more."
+3. Re-disambiguate: ask what they actually need before resuming.
+4. Do NOT assume you know what the new topic is from one sentence. Ask.
+
+When you detect confusion that might be a misaligned problem:
+1. Pause and check: "Wait — are we talking about the same thing? Tell me exactly what your problem is asking."
+2. Don't keep pushing your interpretation. Their confusion might be YOUR misunderstanding of their question.
+3. When in doubt, ask. Always better to ask one more question than to teach the wrong thing for five minutes.
+
+PACING — MATCH THE STUDENT, NOT A METHOD:
+The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them directly. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Match your pacing to who they are right now, not who the method says they should be.`;
+
+          // Adapt first message based on empathy mode
+          if (empathyState.mode === "nurture") {
+            firstMsg = `Hey! I'm Nova. What do you need help with? We can go through your ${deckName || "deck"} together, or if there's something specific bugging you, just tell me.`;
+          } else if (empathyState.mode === "challenge") {
+            firstMsg = `Hey! What are we working on? I can quiz you on ${deckName || "your deck"}, or if you've got a specific problem, throw it at me.`;
+          } else {
+            firstMsg = `Hey! I'm Nova. What do you want to work on? I can quiz you from your ${deckName || "deck"}, or if you've got a specific question or problem, let's dig into that.`;
+          }
         }
 
         const overrides = {

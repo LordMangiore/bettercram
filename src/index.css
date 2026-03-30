@@ -3,6 +3,27 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Stealth scrollbars — thin, blends with background, never draws attention */
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.4);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.2) transparent;
+}
+
+/* Full hide for areas that shouldn't show any scrollbar at all */
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -10,6 +31,12 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+/* Math/KaTeX rendering in cards */
+.math-content .katex { font-size: 1.1em; }
+.math-content .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; }
+.dark .math-content .katex { color: #e5e7eb; }
+.math-content { white-space: pre-wrap; word-wrap: break-word; }
 
 /* Card slide animations */
 @keyframes slide-out-left {
@@ -84,14 +111,14 @@
 
 /* Nuclear confetti screen shake */
 @keyframes shake {
-  0%, 100% { transform: translate(0, 0); }
-  10% { transform: translate(-4px, -2px); }
-  20% { transform: translate(4px, 2px); }
-  30% { transform: translate(-3px, 3px); }
-  40% { transform: translate(3px, -3px); }
-  50% { transform: translate(-2px, 4px); }
-  60% { transform: translate(2px, -4px); }
-  70% { transform: translate(-4px, 1px); }
-  80% { transform: translate(4px, -1px); }
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  10% { transform: translate(-8px, -4px) rotate(-1deg); }
+  20% { transform: translate(8px, 4px) rotate(1deg); }
+  30% { transform: translate(-6px, 6px) rotate(-0.5deg); }
+  40% { transform: translate(6px, -6px) rotate(0.5deg); }
+  50% { transform: translate(-4px, 8px) rotate(-1deg); }
+  60% { transform: translate(4px, -8px) rotate(1deg); }
+  70% { transform: translate(-8px, 2px) rotate(-0.5deg); }
+  80% { transform: translate(8px, -2px) rotate(0.5deg); }
   90% { transform: translate(-1px, 3px); }
 }

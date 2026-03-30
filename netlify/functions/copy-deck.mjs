@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { setDoc, listDocs } from "./lib/firestore.mjs";
 
 export default async function handler(req) {
   if (req.method !== "POST") {
@@ -7,12 +8,14 @@ export default async function handler(req) {
 
   try {
     const userId = req.headers.get("x-user-id");
+    console.log("copy-deck: userId =", userId);
 
     if (!userId) {
       return Response.json({ error: "Auth required" }, { status: 401 });
     }
 
     const { publicDeckId, action } = await req.json();
+    console.log("copy-deck: publicDeckId =", publicDeckId, "action =", action);
     // action: "subscribe" (default) or "clone"
 
     if (!publicDeckId) {
@@ -43,7 +46,14 @@ export default async function handler(req) {
         isClone: true,
       };
 
-      await userStore.setJSON(newDeckId, clonedDeck);
+      // Metadata for Firestore (no cards)
+      const { cards, ...cloneMeta } = clonedDeck;
+
+      // Dual-write: Firestore (metadata) + Blob (full deck with cards)
+      await Promise.all([
+        setDoc(`users/${userId}/decks/${newDeckId}`, cloneMeta),
+        userStore.setJSON(newDeckId, clonedDeck),
+      ]);
 
       return Response.json({
         success: true,
@@ -55,22 +65,41 @@ export default async function handler(req) {
     }
 
     // Default: Subscribe — save a reference, cards load from public store
-    // Check for existing subscription to this public deck
-    const { blobs } = await userStore.list();
-    for (const blob of blobs) {
-      try {
-        const existing = await userStore.get(blob.key, { type: "json" });
-        if (existing?.subscribedTo === publicDeckId) {
-          return Response.json({
-            success: true,
-            deckId: blob.key,
-            name: existing.name,
-            cardCount: existing.cardCount,
-            type: "subscribe",
-            alreadySubscribed: true,
-          });
+    // Dedup check: use Firestore listDocs first, fall back to Blob
+    let existingSubscription = null;
+    try {
+      const firestoreDecks = await listDocs(`users/${userId}/decks`);
+      for (const { id, data } of firestoreDecks) {
+        if (data?.subscribedTo === publicDeckId) {
+          existingSubscription = { key: id, data };
+          break;
         }
-      } catch {}
+      }
+    } catch {}
+
+    if (!existingSubscription) {
+      // Fall back to Blob scan
+      const { blobs } = await userStore.list();
+      for (const blob of blobs) {
+        try {
+          const existing = await userStore.get(blob.key, { type: "json" });
+          if (existing?.subscribedTo === publicDeckId) {
+            existingSubscription = { key: blob.key, data: existing };
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    if (existingSubscription) {
+      return Response.json({
+        success: true,
+        deckId: existingSubscription.key,
+        name: existingSubscription.data.name,
+        cardCount: existingSubscription.data.cardCount,
+        type: "subscribe",
+        alreadySubscribed: true,
+      });
     }
 
     const newDeckId = "deck-ref-" + Date.now();
@@ -85,9 +114,14 @@ export default async function handler(req) {
       author: publicDeck.author,
     };
 
-    await userStore.setJSON(newDeckId, refDeck);
+    // Dual-write: Firestore (INSTANT) + Blob backup
+    await Promise.all([
+      setDoc(`users/${userId}/decks/${newDeckId}`, refDeck),
+      userStore.setJSON(newDeckId, refDeck),
+    ]);
+    console.log("copy-deck: saved subscription", newDeckId, "to Firestore + Blob");
 
-    // Increment subscriber count on public deck
+    // Increment subscriber count on public deck (stays in Blob)
     publicDeck.copies = (publicDeck.copies || 0) + 1;
     await publicStore.setJSON(publicDeckId, publicDeck);
 

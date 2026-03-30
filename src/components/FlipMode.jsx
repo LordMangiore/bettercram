@@ -4,15 +4,24 @@ import { ShuffleIcon, ChevronLeftIcon, ChevronRightIcon } from "./Icons";
 
 export default function FlipMode({ cards, onRegenCard }) {
   const [index, setIndex] = useState(0);
-  const [deck, setDeck] = useState(cards);
-  const [shuffled, setShuffled] = useState(false);
+  const [deck, setDeck] = useState(() => shuffle([...cards]));
+  const [shuffled, setShuffled] = useState(true);
   const [slideDir, setSlideDir] = useState(null); // "left" | "right" | null
   const pendingIndexRef = useRef(null);
   const touchStart = useRef(null);
 
+  const prevLengthRef = useRef(cards.length);
   useEffect(() => {
     setDeck(shuffled ? shuffle([...cards]) : cards);
-    setIndex(0);
+    // Only reset index when switching to a completely different deck
+    // Don't reset on card regen/edit (same or similar count)
+    if (cards.length !== prevLengthRef.current) {
+      setIndex(0);
+    } else {
+      // Same count (regen/edit) — keep position, just clamp
+      setIndex(prev => Math.min(prev, Math.max(0, cards.length - 1)));
+    }
+    prevLengthRef.current = cards.length;
   }, [cards]);
 
   const goNext = useCallback(() => {
@@ -89,31 +98,12 @@ export default function FlipMode({ cards, onRegenCard }) {
 
   return (
     <div
+      className="max-w-2xl mx-auto"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Card with slide animation */}
-      <div className="overflow-hidden rounded-2xl">
-        <div
-          className={slideDir === "left" ? "animate-slide-out-left" : slideDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
-          onAnimationEnd={handleSlideEnd}
-        >
-          <FlashCard card={card} cardKey={`flip-${index}-${card.front.slice(0, 20)}`} onRegenCard={onRegenCard} />
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="mt-4 mb-2">
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-          <div
-            className="bg-indigo-500 h-1.5 rounded-full transition-all"
-            style={{ width: `${((index + 1) / deck.length) * 100}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Progress bar + count */}
+      <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-gray-400 dark:text-gray-500">
           {index + 1} / {deck.length}
         </span>
@@ -129,8 +119,24 @@ export default function FlipMode({ cards, onRegenCard }) {
           <ShuffleIcon className="text-xs" /> Shuffle
         </button>
       </div>
+      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-4">
+        <div
+          className="bg-indigo-500 h-1.5 rounded-full transition-all"
+          style={{ width: `${((index + 1) / deck.length) * 100}%` }}
+        />
+      </div>
 
-      <div className="flex gap-3 justify-center">
+      {/* Card with slide animation */}
+      <div className="rounded-2xl pt-1">
+        <div
+          className={slideDir === "left" ? "animate-slide-out-left" : slideDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
+          onAnimationEnd={handleSlideEnd}
+        >
+          <FlashCard card={card} cardKey={`flip-${index}-${card.front.slice(0, 20)}`} onRegenCard={onRegenCard} />
+        </div>
+      </div>
+
+      <div className="flex gap-3 justify-center mt-4">
         <button
           disabled={index === 0}
           onClick={goPrev}

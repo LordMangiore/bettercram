@@ -1,5 +1,8 @@
-import { useState, useMemo } from "react";
-import { publishDeck, browsePublicDecks, subscribeToDeck, cloneDeck, upvotePublicDeck } from "../api";
+import { useState, useMemo, useRef } from "react";
+import { publishDeck, browsePublicDecks, subscribeToDeck, cloneDeck, upvotePublicDeck, parseUploadedFile } from "../api";
+import { parseAnkiFile, uploadAnkiMedia, resolveCardMedia } from "../lib/ankiParser";
+import SuggestEditModal from "./SuggestEditModal";
+import SuggestionPanel from "./SuggestionPanel";
 
 const COLORS = [
   "from-indigo-500 to-purple-600",
@@ -47,13 +50,21 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, onStudyGroup }) {
+export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, onAddDeckOptimistic, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, deckGroups = [], onSaveDeckGroups, onAssignDeckGroup, onStudyGroup }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [createMode, setCreateMode] = useState("url"); // "url" | "topic" | "crawl"
+  const [suggestModal, setSuggestModal] = useState(null); // { publicDeckId, card?, type }
+  const [suggestionPanel, setSuggestionPanel] = useState(null); // { publicDeckId, deckName }
+  const [createMode, setCreateMode] = useState("url"); // "url" | "topic" | "crawl" | "file"
+  const [uploadFile, setUploadFile] = useState(null); // { name, size } for display
+  const [uploadReady, setUploadReady] = useState(null); // parsed result, ready to import
+  const [uploadParsing, setUploadParsing] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const fileInputRef = useRef(null);
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
   const [newTopic, setNewTopic] = useState("");
   const [crawlLimit, setCrawlLimit] = useState(25);
+  const [density, setDensity] = useState("balanced");
   const [creating, setCreating] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [publicDecks, setPublicDecks] = useState([]);
@@ -65,29 +76,66 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
   const [confirmDeleteDeckId, setConfirmDeleteDeckId] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState({});
 
-  // Compute test groups and ungrouped decks
-  const { testGroups, ungroupedDecks } = useMemo(() => {
-    const tests = studyPlan?.tests || [];
+  // Compute custom groups, test groups, and ungrouped decks
+  const { customGroups, testGroups, ungroupedDecks } = useMemo(() => {
     const assignedDeckIds = new Set();
-    const groups = [];
 
+    // Custom deck groups first
+    const custom = (deckGroups || []).map(g => {
+      const groupDecks = decks.filter(d => d.group === g.id);
+      groupDecks.forEach(d => assignedDeckIds.add(d.id));
+      const totalCards = groupDecks.reduce((sum, d) => sum + (d.cardCount || 0), 0);
+      return { ...g, decks: groupDecks, totalCards };
+    }).filter(g => g.decks.length > 0 || true); // show empty groups too
+
+    // Test groups (from study plan)
+    const tests = studyPlan?.tests || [];
+    const testGrps = [];
     for (const test of tests) {
       if (!test.deckIds || test.deckIds.length === 0) continue;
-      const groupDecks = test.deckIds.map(did => decks.find(d => d.id === did)).filter(Boolean);
+      const groupDecks = test.deckIds.map(did => decks.find(d => d.id === did)).filter(Boolean).filter(d => !assignedDeckIds.has(d.id));
       if (groupDecks.length === 0) continue;
       groupDecks.forEach(d => assignedDeckIds.add(d.id));
       const totalCards = groupDecks.reduce((sum, d) => sum + (d.cardCount || 0), 0);
-      groups.push({ test, decks: groupDecks, totalCards });
+      testGrps.push({ test, decks: groupDecks, totalCards });
     }
 
     const ungrouped = decks.filter(d => !assignedDeckIds.has(d.id));
-    return { testGroups: groups, ungroupedDecks: ungrouped };
-  }, [studyPlan, decks]);
+    return { customGroups: custom, testGroups: testGrps, ungroupedDecks: ungrouped };
+  }, [studyPlan, decks, deckGroups]);
 
-  const hasGroups = testGroups.length > 0;
+  const hasGroups = customGroups.length > 0 || testGroups.length > 0;
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [editingGroup, setEditingGroup] = useState(null);
 
-  function toggleGroup(testId) {
-    setCollapsedGroups(prev => ({ ...prev, [testId]: !prev[testId] }));
+  function toggleGroup(id) {
+    setCollapsedGroups(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function handleCreateGroup(e) {
+    e?.preventDefault();
+    if (!newGroupName.trim()) return;
+    const newGroup = {
+      id: "group-" + Date.now(),
+      name: newGroupName.trim(),
+      color: COLORS[deckGroups.length % COLORS.length],
+      order: deckGroups.length,
+    };
+    onSaveDeckGroups?.([...deckGroups, newGroup]);
+    setNewGroupName("");
+    setShowNewGroup(false);
+  }
+
+  function handleDeleteGroup(groupId) {
+    // Remove group and unassign all decks in it
+    onSaveDeckGroups?.(deckGroups.filter(g => g.id !== groupId));
+    decks.filter(d => d.group === groupId).forEach(d => onAssignDeckGroup?.(d.id, null));
+  }
+
+  function handleRenameGroup(groupId, newName) {
+    onSaveDeckGroups?.(deckGroups.map(g => g.id === groupId ? { ...g, name: newName } : g));
+    setEditingGroup(null);
   }
 
   async function handleBrowse() {
@@ -129,7 +177,18 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
       if (window.plausible) window.plausible("Community Subscribe");
       const result = await subscribeToDeck(publicDeckId);
       showToast(`Added "${result.name}" to your library!`);
-      if (onRefreshDecks) onRefreshDecks();
+      // Optimistically add to local deck list immediately
+      if (onAddDeckOptimistic && result.deckId) {
+        onAddDeckOptimistic({
+          id: result.deckId,
+          name: result.name,
+          cardCount: result.cardCount || 0,
+          subscribedTo: publicDeckId,
+          isReference: true,
+        });
+      }
+      // Also trigger background refresh to get full data eventually
+      if (onRefreshDecks) setTimeout(() => onRefreshDecks(), 3000);
     } catch (err) {
       showToast("Failed to add: " + err.message, "error");
     } finally {
@@ -142,7 +201,15 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
     try {
       const result = await cloneDeck(publicDeckId);
       showToast(`Cloned "${result.name}" — you can now edit it!`);
-      if (onRefreshDecks) onRefreshDecks();
+      if (onAddDeckOptimistic && result.deckId) {
+        onAddDeckOptimistic({
+          id: result.deckId,
+          name: result.name,
+          cardCount: result.cardCount || 0,
+          isClone: true,
+        });
+      }
+      if (onRefreshDecks) setTimeout(() => onRefreshDecks(), 3000);
     } catch (err) {
       showToast("Failed to clone: " + err.message, "error");
     } finally {
@@ -168,9 +235,18 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const options = {};
+      const options = { density };
       let url = null;
-      if (createMode === "topic") {
+
+      if (createMode === "file" && uploadReady) {
+        // File was already parsed on selection — just use the results
+        if (uploadReady.type === "cards") {
+          options.directCards = uploadReady.cards;
+          options.skipGenerate = true;
+        } else if (uploadReady.type === "text") {
+          options.uploadedContent = uploadReady.content;
+        }
+      } else if (createMode === "topic") {
         options.topic = newTopic.trim();
       } else if (createMode === "crawl") {
         url = newUrl.trim() || null;
@@ -179,10 +255,15 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
       } else {
         url = newUrl.trim() || null;
       }
+
       await onCreateDeck(newName.trim(), url, options);
       setNewName("");
       setNewUrl("");
       setNewTopic("");
+      setUploadFile(null);
+      setUploadReady(null);
+      setUploadStatus("");
+      setDensity("balanced");
       setShowCreate(false);
     } catch (err) {
       alert("Failed to create deck: " + err.message);
@@ -245,6 +326,22 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                 >
                   <i className={`fa-solid ${publishing === deck.id ? "fa-spinner fa-spin" : deck.isPublic ? "fa-globe" : "fa-share-nodes"}`} />
                 </button>
+              )}
+              {deckGroups.length > 0 && (
+                <div className="relative" onClick={e => e.stopPropagation()}>
+                  <select
+                    value={deck.group || ""}
+                    onChange={e => onAssignDeckGroup?.(deck.id, e.target.value || null)}
+                    className="w-7 h-7 opacity-0 absolute inset-0 cursor-pointer z-10"
+                    title="Assign to group"
+                  >
+                    <option value="">No group</option>
+                    {deckGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                  <div className={`w-7 h-7 flex items-center justify-center rounded-full transition-all text-xs ${deck.group ? "bg-indigo-500/30 text-indigo-300" : "bg-black/20 text-white/80 hover:bg-black/40"}`}>
+                    <i className="fa-solid fa-folder" />
+                  </div>
+                </div>
               )}
               <button
                 onClick={(e) => {
@@ -335,37 +432,33 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
               </div>
             </div>
           )}
-          {/* Delete confirmation panel */}
-          {confirmDeleteDeckId === deck.id && (
-            <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl" onClick={(e) => e.stopPropagation()}>
-              <p className="text-xs font-semibold text-red-700 dark:text-red-300 mb-1">
-                <i className="fa-solid fa-triangle-exclamation mr-1" />
-                Delete "{deck.name}"?
-              </p>
-              <p className="text-[11px] text-red-600 dark:text-red-400 mb-2.5">
-                {deck.cardCount || 0} cards will be permanently removed. This cannot be undone.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteDeckId(null);
-                    onDeleteDeck(deck.id);
-                  }}
-                  className="flex-1 px-3 py-1.5 text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all"
-                >
-                  Yes, delete
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteDeckId(null);
-                  }}
-                  className="flex-1 px-3 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-all"
-                >
-                  Cancel
-                </button>
-              </div>
+          {/* Delete confirmation is now a modal — rendered at bottom of component */}
+          {/* Suggestion buttons for subscribed decks */}
+          {deck.isReference && deck.subscribedTo && activeDeckId === deck.id && (
+            <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <button
+                onClick={(e) => { e.stopPropagation(); setSuggestModal({ publicDeckId: deck.subscribedTo, type: "new" }); }}
+                className="flex-1 px-2 py-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
+              >
+                <i className="fa-solid fa-lightbulb mr-1" />Suggest Card
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setSuggestionPanel({ publicDeckId: deck.subscribedTo, deckName: deck.name }); }}
+                className="flex-1 px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+              >
+                <i className="fa-solid fa-list-check mr-1" />View Suggestions
+              </button>
+            </div>
+          )}
+          {/* Owner suggestion review for published decks */}
+          {deck.isPublic && activeDeckId === deck.id && (
+            <div className="mt-1.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); setSuggestionPanel({ publicDeckId: `${user?.id}-${deck.id}`, deckName: deck.name }); }}
+                className="w-full px-2 py-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all"
+              >
+                <i className="fa-solid fa-inbox mr-1" />Review Suggestions
+              </button>
             </div>
           )}
           {!deck.isReference && (deck.cardCount || 0) > 0 && activeDeckId === deck.id && (
@@ -399,6 +492,31 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                   <i className="fa-solid fa-pen-to-square mr-1" />Manage
                 </button>
               )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Export deck as JSON
+                  const exportData = {
+                    name: deck.name,
+                    cardCount: deck.cardCount,
+                    cards: deck.cards || [],
+                    category: deck.category,
+                    createdAt: deck.createdAt,
+                    exportedAt: new Date().toISOString(),
+                    source: "BetterCram",
+                  };
+                  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${deck.name.replace(/[^a-zA-Z0-9]/g, "_")}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600/50 transition-all"
+              >
+                <i className="fa-solid fa-download mr-1" />Export
+              </button>
             </div>
           )}
         </div>
@@ -415,7 +533,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">My Library</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -425,20 +543,47 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
         <div className="flex gap-2">
           <button
             onClick={handleBrowse}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-all shadow-md"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-all shadow-md"
           >
             <i className="fa-solid fa-globe" />
             Browse Community
           </button>
           <button
+            onClick={() => setShowNewGroup(!showNewGroup)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-600 text-white rounded-xl text-sm font-medium hover:bg-gray-700 transition-all shadow-md"
+          >
+            <i className="fa-solid fa-folder-plus" />
+            Group
+          </button>
+          <button
             onClick={() => setShowCreate(!showCreate)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-all shadow-md"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-all shadow-md"
           >
             <i className="fa-solid fa-plus" />
             New Deck
           </button>
         </div>
       </div>
+
+      {/* New group form */}
+      {showNewGroup && (
+        <form onSubmit={handleCreateGroup} className="mb-4 flex gap-2">
+          <input
+            type="text"
+            value={newGroupName}
+            onChange={e => setNewGroupName(e.target.value)}
+            placeholder="Group name (e.g. MCAT Prep, Semester 2)"
+            className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+            autoFocus
+          />
+          <button type="submit" disabled={!newGroupName.trim()} className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+            Create
+          </button>
+          <button type="button" onClick={() => { setShowNewGroup(false); setNewGroupName(""); }} className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+            Cancel
+          </button>
+        </form>
+      )}
 
       {/* Generation progress */}
       {generating && generatingStatus && (
@@ -479,8 +624,9 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
               <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg mb-3">
                 {[
                   { id: "url", icon: "fa-link", label: "URL" },
-                  { id: "topic", icon: "fa-magnifying-glass", label: "Topic Search" },
-                  { id: "crawl", icon: "fa-spider", label: "Crawl Site" },
+                  { id: "file", icon: "fa-file-arrow-up", label: "Upload" },
+                  { id: "topic", icon: "fa-magnifying-glass", label: "Search" },
+                  { id: "crawl", icon: "fa-spider", label: "Crawl" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -511,6 +657,99 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     Google Docs, websites, articles, or any public URL
                   </p>
+                </div>
+              )}
+
+              {/* File upload mode */}
+              {createMode === "file" && (
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.apkg"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const meta = { name: file.name, size: file.size };
+                      setUploadFile(meta);
+                      setUploadReady(null);
+                      if (!newName.trim()) setNewName(file.name.replace(/\.(pdf|apkg)$/i, ""));
+
+                      const ext = file.name.toLowerCase().split(".").pop();
+                      if (ext === "apkg") {
+                        // Parse Anki immediately while File reference is alive
+                        setUploadParsing(true);
+                        try {
+                          const setStatus = (stage, detail) => setUploadStatus(detail || stage);
+                          const result = await parseAnkiFile(file, setStatus);
+                          // Upload media
+                          let resolvedCards = result.cards;
+                          if (result.media.size > 0) {
+                            const urlMap = await uploadAnkiMedia(result.media, setStatus);
+                            resolvedCards = resolveCardMedia(result.cards, urlMap);
+                          }
+                          setUploadReady({ type: "cards", cards: resolvedCards, title: result.deckName });
+                          setUploadStatus(`Ready: ${resolvedCards.length} cards, ${result.media.size} media files`);
+                          if (window.plausible) window.plausible("Anki Import", { props: { cards: String(resolvedCards.length), media: String(result.media.size) } });
+                          if (result.deckName && (!newName.trim() || newName === meta.name.replace(/\.apkg$/i, ""))) {
+                            setNewName(result.deckName);
+                          }
+                        } catch (err) {
+                          console.error("Anki import error:", err);
+                          setUploadStatus(`Error: ${err.message}`);
+                          setUploadReady(null);
+                        } finally {
+                          setUploadParsing(false);
+                        }
+                      } else if (ext === "pdf") {
+                        // PDF: read buffer now while reference is fresh
+                        setUploadParsing(true);
+                        setUploadStatus("Reading PDF...");
+                        try {
+                          const pdfFile = file; // use immediately
+                          const result = await parseUploadedFile(pdfFile);
+                          setUploadReady(result);
+                          setUploadStatus(`Ready: ${result.chars ? Math.round(result.chars / 1000) + "k chars" : "parsed"}`);
+                        } catch (err) {
+                          setUploadStatus(`Error: ${err.message}`);
+                          setUploadReady(null);
+                        } finally {
+                          setUploadParsing(false);
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`w-full border-2 border-dashed rounded-xl p-6 text-center transition-all ${
+                      uploadFile
+                        ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20"
+                        : "border-gray-300 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500"
+                    }`}
+                  >
+                    {uploadFile ? (
+                      <div>
+                        <i className={`fa-solid ${uploadFile.name.endsWith(".apkg") ? "fa-layer-group text-purple-500" : "fa-file-pdf text-red-500"} text-2xl mb-2`} />
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{uploadFile.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{(uploadFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                        <p className="text-xs text-indigo-500 mt-2">Tap to change file</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <i className="fa-solid fa-cloud-arrow-up text-2xl text-gray-400 dark:text-gray-500 mb-2" />
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Tap to upload a file</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PDF or Anki (.apkg) — any size</p>
+                      </div>
+                    )}
+                  </button>
+                  {uploadStatus && (
+                    <div className={`mt-2 flex items-center gap-2 text-xs ${uploadStatus.startsWith("Error") ? "text-red-500" : uploadStatus.startsWith("Ready") ? "text-green-500" : "text-indigo-500"}`}>
+                      {uploadParsing ? <i className="fa-solid fa-spinner fa-spin" /> : uploadStatus.startsWith("Error") ? <i className="fa-solid fa-circle-exclamation" /> : uploadStatus.startsWith("Ready") ? <i className="fa-solid fa-circle-check" /> : null}
+                      {uploadStatus}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -561,14 +800,46 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
               )}
             </div>
 
+            {/* Card density selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Card density
+              </label>
+              <div className="flex gap-1">
+                {[
+                  { id: "concise", label: "Concise", desc: "Key concepts only" },
+                  { id: "balanced", label: "Balanced", desc: "Good coverage" },
+                  { id: "comprehensive", label: "Comprehensive", desc: "Everything worth studying" },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setDensity(opt.id)}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      density === opt.id
+                        ? "bg-indigo-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                {density === "concise" ? "Fewer, high-quality cards" : density === "comprehensive" ? "Most cards — covers everything" : "Default — good coverage"}
+              </p>
+            </div>
+
             <div className="flex gap-3 pt-1">
               <button
                 type="submit"
-                disabled={creating || !newName.trim() || (createMode === "topic" && !newTopic.trim())}
+                disabled={creating || uploadParsing || !newName.trim() || (createMode === "topic" && !newTopic.trim()) || (createMode === "file" && !uploadReady)}
                 className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-all disabled:opacity-50"
               >
-                {creating ? (
-                  <><i className="fa-solid fa-spinner fa-spin" /> Creating...</>
+                {creating || uploadParsing ? (
+                  <><i className="fa-solid fa-spinner fa-spin" /> {uploadParsing ? "Parsing file..." : "Creating..."}</>
+                ) : createMode === "file" ? (
+                  <><i className="fa-solid fa-file-arrow-up" /> {uploadFile?.name?.endsWith(".apkg") ? "Import Anki Deck" : "Upload & Generate"}</>
                 ) : createMode === "topic" ? (
                   <><i className="fa-solid fa-magnifying-glass" /> Search & Generate</>
                 ) : createMode === "crawl" ? (
@@ -579,7 +850,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
               </button>
               <button
                 type="button"
-                onClick={() => { setShowCreate(false); setNewName(""); setNewUrl(""); setNewTopic(""); }}
+                onClick={() => { setShowCreate(false); setNewName(""); setNewUrl(""); setNewTopic(""); setDensity("balanced"); }}
                 className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 Cancel
@@ -605,6 +876,71 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
         </div>
       ) : hasGroups ? (
         <div className="space-y-6">
+          {/* Custom deck groups */}
+          {customGroups.map((group) => {
+            const isCollapsed = collapsedGroups[group.id];
+            return (
+              <div key={group.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div
+                  onClick={() => toggleGroup(group.id)}
+                  className="bg-gray-50 dark:bg-gray-800/80 px-5 py-4 cursor-pointer select-none transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-3 h-3 rounded-full bg-gradient-to-br ${group.color} flex-shrink-0`} />
+                      {editingGroup === group.id ? (
+                        <input
+                          type="text"
+                          defaultValue={group.name}
+                          autoFocus
+                          onClick={e => e.stopPropagation()}
+                          onBlur={e => handleRenameGroup(group.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") handleRenameGroup(group.id, e.target.value); if (e.key === "Escape") setEditingGroup(null); }}
+                          className="text-lg font-bold bg-transparent border-b border-indigo-500 outline-none text-gray-900 dark:text-white"
+                        />
+                      ) : (
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">{group.name}</h3>
+                      )}
+                      <i className={`fa-solid fa-chevron-${isCollapsed ? "right" : "down"} text-xs text-gray-400 flex-shrink-0`} />
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {group.totalCards.toLocaleString()} cards · {group.decks.length} {group.decks.length === 1 ? "deck" : "decks"}
+                      </span>
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditingGroup(group.id); }}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-xs"
+                        title="Rename group"
+                      >
+                        <i className="fa-solid fa-pen" />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); if (confirm(`Delete group "${group.name}"? Decks won't be deleted.`)) handleDeleteGroup(group.id); }}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs"
+                        title="Delete group"
+                      >
+                        <i className="fa-solid fa-trash" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {!isCollapsed && (
+                  <div className="p-4 bg-white/50 dark:bg-gray-800/50">
+                    {group.decks.length > 0 ? (
+                      <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5 pl-2">
+                        {group.decks.map((deck) => renderDeckCard(deck, decks.indexOf(deck)))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">
+                        No decks in this group yet. Assign decks from the menu on each deck card.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
           {/* Test groups */}
           {testGroups.map(({ test, decks: groupDecks, totalCards }) => {
             const tc = getTestColors(test.color);
@@ -665,7 +1001,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                 {/* Group decks */}
                 {!isCollapsed && (
                   <div className="p-4 bg-white/50 dark:bg-gray-800/50">
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 pl-2">
+                    <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5 pl-2">
                       {groupDecks.map((deck, i) => renderDeckCard(deck, decks.indexOf(deck)))}
                     </div>
                   </div>
@@ -686,7 +1022,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                   ({ungroupedDecks.length})
                 </span>
               </div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
                 {ungroupedDecks.map((deck) => renderDeckCard(deck, decks.indexOf(deck)))}
               </div>
             </div>
@@ -694,7 +1030,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
         </div>
       ) : (
         /* No groups — show flat grid as before */
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
           {decks.map((deck, i) => renderDeckCard(deck, i))}
         </div>
       )}
@@ -816,6 +1152,54 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
           {toast.msg}
         </div>
       )}
+      {/* Delete confirmation modal */}
+      {confirmDeleteDeckId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setConfirmDeleteDeckId(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 w-full max-w-sm shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center">
+                <i className="fa-solid fa-triangle-exclamation text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete deck?</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">This cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+              <strong>"{decks.find(d => d.id === confirmDeleteDeckId)?.name}"</strong> and all {decks.find(d => d.id === confirmDeleteDeckId)?.cardCount || 0} cards will be permanently removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { onDeleteDeck(confirmDeleteDeckId); setConfirmDeleteDeckId(null); }}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-semibold text-sm hover:bg-red-700 transition-all"
+              >
+                Yes, delete
+              </button>
+              <button
+                onClick={() => setConfirmDeleteDeckId(null)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Suggestion modals */}
+      <SuggestEditModal
+        open={!!suggestModal}
+        onClose={() => setSuggestModal(null)}
+        publicDeckId={suggestModal?.publicDeckId}
+        card={suggestModal?.card}
+        type={suggestModal?.type || "new"}
+      />
+      <SuggestionPanel
+        open={!!suggestionPanel}
+        onClose={() => setSuggestionPanel(null)}
+        publicDeckId={suggestionPanel?.publicDeckId}
+        deckName={suggestionPanel?.deckName}
+      />
     </div>
   );
 }

@@ -65,7 +65,8 @@ export default async (req) => {
       },
       body: JSON.stringify({
         query: searchQuery,
-        limit: 8,
+        limit: 5,
+        timeout: 15000,
         scrapeOptions: { formats: ["markdown"] },
       }),
     });
@@ -76,50 +77,15 @@ export default async (req) => {
     if (searchRes.ok) {
       const searchData = await searchRes.json();
       if (searchData.success && searchData.data) {
-        // Search gives us URLs — scrape the top 2 for content
-        // Use inline markdown from search if available, scrape top 4 otherwise
+        // Use inline markdown from search results — no additional scraping needed
         for (const item of searchData.data) {
           if (item.markdown && item.markdown.length > 100) {
             webContent += `\n\nSource: ${item.title || item.url}\n${item.markdown.slice(0, 3000)}`;
             sources.push({ title: item.title || item.url, url: item.url });
-          }
-        }
-        const urlsToScrape = sources.length < 3 ? searchData.data.filter(d => !d.markdown || d.markdown.length < 100).slice(0, 4) : [];
-        const scrapeResults = await Promise.allSettled(
-          urlsToScrape.map(async (item) => {
-            const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}`,
-              },
-              body: JSON.stringify({ url: item.url, formats: ["markdown"] }),
-            });
-            if (!scrapeRes.ok) return null;
-            const scrapeData = await scrapeRes.json();
-            return {
-              title: item.title || item.url,
-              url: item.url,
-              markdown: scrapeData.data?.markdown || "",
-            };
-          })
-        );
-
-        for (const r of scrapeResults) {
-          const result = r.status === "fulfilled" ? r.value : null;
-          if (result && result.markdown) {
-            webContent += `\n\nSource: ${result.title}\n${result.markdown.slice(0, 3000)}`;
-            sources.push({ title: result.title, url: result.url });
-          }
-        }
-
-        // Also add search descriptions for any remaining results
-        for (const result of searchData.data) {
-          if (result.description && !sources.find((s) => s.url === result.url)) {
-            sources.push({
-              title: result.title || result.url,
-              url: result.url,
-            });
+          } else if (item.description) {
+            // Use description as fallback context
+            webContent += `\n\nSource: ${item.title || item.url}\n${item.description}`;
+            sources.push({ title: item.title || item.url, url: item.url });
           }
         }
       }
@@ -128,7 +94,7 @@ export default async (req) => {
     const deckContext = deckName || card.category || "academic studies";
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-3-5-haiku-20241022",
       max_tokens: 2048,
       system: `You are an expert tutor synthesizing research to deepen a student's understanding of ${deckContext}.
 Given a flashcard topic and web research, create a comprehensive but digestible deep dive.

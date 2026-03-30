@@ -1,112 +1,97 @@
 export default function AboutPage({ onBack, dark }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className={`min-h-screen transition-colors ${dark ? "bg-gray-950 text-white" : "bg-white text-gray-900"}`}>
+      <div className="max-w-3xl mx-auto px-6 py-12">
         {onBack && (
           <button
             onClick={onBack}
-            className="mb-6 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            className={`mb-10 flex items-center gap-2 text-sm transition-colors ${dark ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900"}`}
           >
             <i className="fa-solid fa-arrow-left" />
             Back
           </button>
         )}
 
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-3">
-            About BetterCram
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-lg max-w-2xl mx-auto">
-            Built by a married couple who believes students deserve better tools.
+        {/* Header */}
+        <div className="mb-16">
+          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">About BetterCram</h2>
+          <p className={`text-lg ${dark ? "text-gray-400" : "text-gray-500"}`}>
+            Two people. One app. Built because Anna needed it.
           </p>
         </div>
 
         {/* Origin story */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 mb-8">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">How it started</h3>
-          <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-            Anna was studying for the MCAT while working full-time as a CT/Nuclear Medicine Technologist. She jokingly asked her husband Nicho — who works in product and tech — if he could either do the dishes or build an app that auto-generates flashcards from her Google Docs. Within 24 hours, BetterCram was live — with way more features than either of them imagined.
+        <div className="mb-16 space-y-5">
+          <p className={`text-base leading-relaxed ${dark ? "text-gray-300" : "text-gray-600"}`}>
+            Anna was studying for the MCAT while working full-time as a CT/Nuclear Medicine Technologist. She jokingly asked her husband Nicho if he could either do the dishes or build an app that auto-generates flashcards from her Google Docs.
           </p>
-          <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-            We're not a big company with massive financial backing. Just two people working full-time who saw a problem and built a solution. The more people who use BetterCram, the better it gets — community decks grow, audio caches speed up, and every piece of feedback makes it stronger.
+          <p className={`text-base leading-relaxed ${dark ? "text-gray-300" : "text-gray-600"}`}>
+            24 hours later, BetterCram was live. With way more features than either of them expected.
+          </p>
+          <p className={`text-base leading-relaxed ${dark ? "text-gray-300" : "text-gray-600"}`}>
+            We're not a company with funding or a team of 50. Just two people who saw a gap between "memorize this" and "actually understand it," and decided to build something better. The more people who use it, the better it gets. Community decks grow, audio caches speed up, and every piece of feedback shapes what comes next.
           </p>
         </div>
 
         {/* Team */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Nicho */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
+        <div className="grid sm:grid-cols-2 gap-6 mb-16">
+          <div className={`rounded-2xl p-6 border ${dark ? "bg-white/[0.03] border-white/10" : "bg-gray-50 border-gray-200"}`}>
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold shrink-0">
                 N
               </div>
               <div>
-                <h4 className="text-lg font-bold text-gray-900 dark:text-white">Nicholas (Nicho) Mangiore</h4>
-                <p className="text-sm text-indigo-600 dark:text-indigo-400">Product / Builder / The Guy Who Did the Dishes Once</p>
+                <h4 className="font-bold">Nicholas Mangiore</h4>
+                <p className={`text-sm ${dark ? "text-indigo-400" : "text-indigo-600"}`}>Product & Engineering</p>
               </div>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-              Product Owner at CCA Global Partners. Previously led digital transformation at Mecum Auctions for 5 years — building ERPs from scratch, managing Salesforce, and wearing every hat imaginable. Certified ScrumMaster (CSM) and Certified Scrum Product Owner (CSPO).
+            <p className={`text-sm leading-relaxed mb-3 ${dark ? "text-gray-400" : "text-gray-500"}`}>
+              Product Owner at CCA Global Partners. Previously led digital transformation at Mecum Auctions for 5 years. Certified ScrumMaster and Scrum Product Owner.
             </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 italic mb-4">
+            <p className={`text-xs italic mb-4 ${dark ? "text-gray-600" : "text-gray-400"}`}>
               "My wife asked me to build her an AI flashcard app. I said easy. Anything to not have to do dishes."
             </p>
-            <div className="flex gap-3">
-              <a
-                href="https://www.linkedin.com/in/nicholas-m-3a313a101/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <i className="fa-brands fa-linkedin" /> LinkedIn
-              </a>
-            </div>
+            <a href="https://www.linkedin.com/in/nicholas-m-3a313a101/" target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1.5 text-xs ${dark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"}`}>
+              <i className="fa-brands fa-linkedin" /> LinkedIn
+            </a>
           </div>
 
-          {/* Anna */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className={`rounded-2xl p-6 border ${dark ? "bg-white/[0.03] border-white/10" : "bg-gray-50 border-gray-200"}`}>
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white text-xl font-bold shrink-0">
                 A
               </div>
               <div>
-                <h4 className="text-lg font-bold text-gray-900 dark:text-white">Anna Mangiore, BHSc</h4>
-                <p className="text-sm text-pink-600 dark:text-pink-400">The reason this exists</p>
+                <h4 className="font-bold">Anna Mangiore, BHSc</h4>
+                <p className={`text-sm ${dark ? "text-pink-400" : "text-pink-600"}`}>The reason this exists</p>
               </div>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-              R.T.(R)(N)(CT)(ARRT) — X-Ray, CT, and Nuclear Medicine Technologist at Mercy. Currently a premed student at Washington University in St. Louis, studying for the MCAT and applying to medical school for the 2026-2027 cycle. The original BetterCram user.
+            <p className={`text-sm leading-relaxed mb-3 ${dark ? "text-gray-400" : "text-gray-500"}`}>
+              X-Ray, CT, and Nuclear Medicine Technologist at Mercy. Premed at Washington University in St. Louis, studying for the MCAT. The original BetterCram user.
             </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 italic mb-4">
+            <p className={`text-xs italic mb-4 ${dark ? "text-gray-600" : "text-gray-400"}`}>
               "I found that my most effective study habits vary depending on what I'm studying for. BetterCram adapts to how I need to learn."
             </p>
-            <div className="flex gap-3">
-              <a
-                href="https://www.linkedin.com/in/anna-mangiore/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <i className="fa-brands fa-linkedin" /> LinkedIn
-              </a>
-            </div>
+            <a href="https://www.linkedin.com/in/anna-mangiore/" target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1.5 text-xs ${dark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"}`}>
+              <i className="fa-brands fa-linkedin" /> LinkedIn
+            </a>
           </div>
         </div>
 
         {/* Built with */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 mb-8">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Built with</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="mb-16">
+          <h3 className="text-sm font-semibold uppercase tracking-wider mb-6" style={{ color: dark ? "#6b7280" : "#9ca3af" }}>Built with</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
             {[
-              { name: "Claude", desc: "AI card generation, tutoring, quizzes", icon: "fa-brain" },
-              { name: "ElevenLabs", desc: "Nova voice tutor, Sage audio narrator", icon: "fa-microphone" },
-              { name: "Firecrawl", desc: "Web search, scraping, site crawling", icon: "fa-fire" },
-              { name: "React + Netlify", desc: "Frontend, serverless functions, hosting", icon: "fa-code" },
+              { name: "Claude", desc: "Cards, tutoring, quizzes", icon: "fa-brain" },
+              { name: "ElevenLabs", desc: "Nova and Sage voices", icon: "fa-microphone" },
+              { name: "Firecrawl", desc: "Web scraping and search", icon: "fa-fire" },
+              { name: "React + Netlify", desc: "App and infrastructure", icon: "fa-code" },
             ].map((tech) => (
-              <div key={tech.name} className="text-center p-3">
-                <i className={`fa-solid ${tech.icon} text-2xl text-indigo-500 mb-2 block`} />
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{tech.name}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{tech.desc}</p>
+              <div key={tech.name} className="text-center">
+                <i className={`fa-solid ${tech.icon} text-xl text-indigo-500 mb-2 block`} />
+                <p className={`text-sm font-semibold ${dark ? "" : "text-gray-900"}`}>{tech.name}</p>
+                <p className={`text-xs ${dark ? "text-gray-500" : "text-gray-400"}`}>{tech.desc}</p>
               </div>
             ))}
           </div>
@@ -114,20 +99,18 @@ export default function AboutPage({ onBack, dark }) {
 
         {/* Community */}
         <div className="text-center">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Join the community, report bugs, share decks, and help us make BetterCram better.
+          <p className={`mb-4 ${dark ? "text-gray-400" : "text-gray-500"}`}>
+            Join the community. Report bugs. Share decks. Help us make it better.
           </p>
-          <div className="flex justify-center gap-3">
-            <a
-              href="https://www.reddit.com/r/BetterCram/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-3 bg-orange-500 text-white rounded-xl text-sm font-medium hover:bg-orange-600 transition-colors"
-            >
-              <i className="fa-brands fa-reddit-alien" />
-              r/BetterCram
-            </a>
-          </div>
+          <a
+            href="https://www.reddit.com/r/BetterCram/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-orange-500 text-white rounded-xl text-sm font-medium hover:bg-orange-600 transition-colors"
+          >
+            <i className="fa-brands fa-reddit-alien" />
+            r/BetterCram
+          </a>
         </div>
       </div>
     </div>

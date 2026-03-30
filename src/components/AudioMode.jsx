@@ -184,7 +184,14 @@ export default function AudioMode({ cards }) {
       audioRef.current.pause();
       audioRef.current = null;
     }
-    playCard(currentIdx + 1);
+    const nextIdx = Math.min(currentIdx + 1, cards.length - 1);
+    setCurrentIdx(nextIdx);
+    // Only auto-play if already playing, otherwise just navigate
+    if (playerState === "playing" || playerState === "paused") {
+      playCard(nextIdx);
+    } else {
+      setPlayerState("idle");
+    }
   }
 
   function skipPrev() {
@@ -192,7 +199,14 @@ export default function AudioMode({ cards }) {
       audioRef.current.pause();
       audioRef.current = null;
     }
-    playCard(Math.max(0, currentIdx - 1));
+    const prevIdx = Math.max(0, currentIdx - 1);
+    setCurrentIdx(prevIdx);
+    // Only auto-play if already playing, otherwise just navigate
+    if (playerState === "playing" || playerState === "paused") {
+      playCard(prevIdx);
+    } else {
+      setPlayerState("idle");
+    }
   }
 
   const aIdx = actualIdx(currentIdx);

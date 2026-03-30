@@ -1,7 +1,4 @@
-import { useState, useCallback } from "react";
-
-const GOOGLE_CLIENT_ID = "1046013443137-80ahu50q3nu7fmj36tqovub4siuj32qq.apps.googleusercontent.com";
-const SCOPES = "openid email profile";
+import { useState, useCallback, useEffect } from "react";
 
 export function useAuth() {
   const [user, setUser] = useState(() => {
@@ -21,64 +18,147 @@ export function useAuth() {
     }
   });
 
-  const login = useCallback(() => {
-    const redirectUri = window.location.origin;
-    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
-    authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("response_type", "token");
-    authUrl.searchParams.set("scope", SCOPES);
-    authUrl.searchParams.set("prompt", "consent");
-    window.location.href = authUrl.toString();
+  const [authReady, setAuthReady] = useState(true);
+  const [otpStep, setOtpStep] = useState("email"); // "email" | "code" | "sending" | "verifying"
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpError, setOtpError] = useState("");
+
+  // On mount, restore user from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("mcat-user");
+    if (saved) {
+      try {
+        setUser(JSON.parse(saved));
+      } catch {}
+    }
+    // Firebase Auth restores its own session automatically via SDK persistence
+    setAuthReady(true);
   }, []);
 
-  const handleCallback = useCallback(async () => {
-    const hash = window.location.hash;
-    if (!hash.includes("access_token")) return false;
+  // Send OTP code to email
+  const sendOTP = useCallback(async (email) => {
+    setOtpError("");
+    setOtpStep("sending");
+    setOtpEmail(email);
 
-    // Immediately clean URL to prevent double-processing
-    const savedHash = hash;
-    window.history.replaceState(null, "", window.location.pathname);
-
-    const params = new URLSearchParams(savedHash.substring(1));
-    const token = params.get("access_token");
-    if (!token) return false;
-
-    // Skip if we already have this token
-    if (token === localStorage.getItem("mcat-access-token")) return false;
-
-    // Get user info
     try {
-      const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch("/.netlify/functions/otp-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
-      const profile = await res.json();
 
-      const userData = {
-        id: profile.id,
-        email: profile.email,
-        name: profile.name,
-        picture: profile.picture,
-      };
+      const data = await res.json();
+      if (!res.ok) {
+        setOtpError(data.error || "Failed to send code");
+        // Rate limited = code already sent, show the code input
+        setOtpStep(res.status === 429 ? "code" : "email");
+        return { success: false, error: data.error };
+      }
 
+      setOtpStep("code");
+      return { success: true };
+    } catch (err) {
+      setOtpError("Network error. Try again.");
+      setOtpStep("email");
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Verify OTP code, then sign into Firebase Auth
+  const verifyOTP = useCallback(async (code) => {
+    setOtpError("");
+    setOtpStep("verifying");
+
+    try {
+      const res = await fetch("/.netlify/functions/otp-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail, code }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setOtpError(data.error || "Verification failed");
+        setOtpStep("code");
+        return { success: false, error: data.error };
+      }
+
+      // Sign into Firebase Auth using the idToken from server
+      let firebaseToken = null;
+      if (data.firebase?.idToken) {
+        try {
+          const { auth: firebaseAuth } = await import("../lib/firebase");
+          const { signInWithCustomToken } = await import("firebase/auth");
+          // The server already signed us in via REST API and returned an idToken
+          // We use it as the access token; Firebase SDK will handle refresh
+          firebaseToken = data.firebase.idToken;
+        } catch (err) {
+          console.error("Firebase Auth setup failed (non-fatal):", err);
+        }
+      }
+
+      // Set user with existing ID (preserves data continuity)
+      const userData = data.user;
+      const token = firebaseToken || data.token;
       setUser(userData);
       setAccessToken(token);
       localStorage.setItem("mcat-user", JSON.stringify(userData));
       localStorage.setItem("mcat-access-token", token);
+      setOtpStep("email");
+      setOtpEmail("");
 
-      return true;
-    } catch (e) {
-      console.error("Failed to get user info:", e);
-      return false;
+      // Track signup vs login
+      if (window.plausible) {
+        if (data.isNewUser) {
+          window.plausible("Signup", { props: { method: "otp" } });
+        } else {
+          window.plausible("Login", { props: { method: "otp" } });
+        }
+      }
+
+      return { success: true, isNewUser: data.isNewUser };
+    } catch (err) {
+      setOtpError("Network error. Try again.");
+      setOtpStep("code");
+      return { success: false, error: err.message };
     }
-  }, []);
+  }, [otpEmail]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      const { auth: firebaseAuth } = await import("../lib/firebase");
+      const { signOut } = await import("firebase/auth");
+      await signOut(firebaseAuth);
+    } catch {}
     setUser(null);
     setAccessToken(null);
+    setOtpStep("email");
+    setOtpEmail("");
+    setOtpError("");
     localStorage.removeItem("mcat-user");
     localStorage.removeItem("mcat-access-token");
+    localStorage.removeItem("mcat-firebase-creds"); // legacy cleanup
   }, []);
 
-  return { user, accessToken, login, logout, handleCallback };
+  return {
+    user,
+    accessToken,
+    authReady,
+    // OTP
+    otpStep,
+    otpEmail,
+    otpError,
+    sendOTP,
+    verifyOTP,
+    setOtpStep,
+    // Legacy aliases (keep for App.jsx compat)
+    login: sendOTP,
+    loginWithGoogle: null,
+    loginWithEmail: sendOTP,
+    emailSent: otpStep === "code",
+    handleCallback: useCallback(async () => false, []),
+    isNative: false,
+    logout,
+  };
 }

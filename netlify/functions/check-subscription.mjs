@@ -41,7 +41,7 @@ export default async function handler(req) {
       } catch {}
 
       if (!trialData || !trialData.startedAt) {
-        // First time — start 7-day trial
+        // First time — start 30-day trial
         trialData = { startedAt: new Date().toISOString(), email: email.toLowerCase() };
         await trialStore.setJSON(emailKey, trialData);
       }
@@ -55,7 +55,7 @@ export default async function handler(req) {
       }
 
       const validStart = new Date(trialData.startedAt);
-      const trialEnd = new Date(validStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const trialEnd = new Date(validStart.getTime() + 30 * 24 * 60 * 60 * 1000);
       const isTrialActive = Date.now() < trialEnd.getTime();
 
       if (isTrialActive) {

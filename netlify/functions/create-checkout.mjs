@@ -3,9 +3,8 @@ import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const PRICES = {
-  starter_monthly: "price_1TEByGE6n64xfKxiSN7fkhFs",
-  pro_monthly: "price_1TEBycE6n64xfKxiHdWfq2OC",
-  pro_yearly: "price_1TEBz1E6n64xfKxihyyqD2Wu",
+  pro_monthly: "price_1TEByGE6n64xfKxiSN7fkhFs", // $12/mo
+  pro_yearly: "price_1TEBz1E6n64xfKxihyyqD2Wu", // $108/yr
 };
 
 // Emails that get free access
@@ -40,10 +39,10 @@ export default async function handler(req) {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: successUrl || "https://bettercram.com?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: cancelUrl || "https://bettercram.com?canceled=true",
+      success_url: "https://bettercram.com?session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: "https://bettercram.com?canceled=true",
       subscription_data: {
-        trial_period_days: 7,
+        trial_period_days: 30,
       },
       allow_promotion_codes: true,
     };

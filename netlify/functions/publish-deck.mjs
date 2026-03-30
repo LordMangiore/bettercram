@@ -39,6 +39,43 @@ export default async function handler(req) {
       return Response.json({ success: true, action: "unpublished" });
     }
 
+    // Dedup check — look for an existing public deck with the same name
+    const { blobs } = await publicStore.list();
+    let existingKey = null;
+    let existingDeck = null;
+    const normalizedName = (deck.name || "").trim().toLowerCase();
+
+    for (const blob of blobs) {
+      // Skip our own key — we'll overwrite it anyway
+      if (blob.key === `${userId}-${deckId}`) continue;
+      try {
+        const pub = await publicStore.get(blob.key, { type: "json" });
+        if (pub && (pub.name || "").trim().toLowerCase() === normalizedName) {
+          existingKey = blob.key;
+          existingDeck = pub;
+          break;
+        }
+      } catch {}
+    }
+
+    if (existingKey && existingDeck) {
+      // Update the existing entry instead of creating a duplicate
+      existingDeck.description = deck.description || existingDeck.description;
+      existingDeck.cardCount = deck.cardCount || deck.cards?.length || 0;
+      existingDeck.categories = [...new Set((deck.cards || []).map(c => c.category).filter(Boolean))];
+      existingDeck.cards = deck.cards || existingDeck.cards;
+      existingDeck.publishedAt = new Date().toISOString();
+      // Keep existing copies/upvotes
+      await publicStore.setJSON(existingKey, existingDeck);
+
+      // Mark user's deck as public, pointing to the existing public entry
+      deck.isPublic = true;
+      deck.publicId = existingKey;
+      await userStore.setJSON(deckId, deck);
+
+      return Response.json({ success: true, action: "published", publicId: existingKey, deduplicated: true });
+    }
+
     // Publish — save a copy to public store
     const publicDeck = {
       name: deck.name,

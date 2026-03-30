@@ -1,95 +1,16 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { createEmptyCard, fsrs, generatorParameters, Rating } from "ts-fsrs";
+import { Rating } from "ts-fsrs";
 import confetti from "canvas-confetti";
-import { generateHelperCards } from "../api";
 import FlashCard from "./FlashCard";
 import { RotateIcon } from "./Icons";
-
-function cardKey(card) {
-  return card.front.slice(0, 60);
-}
+import { saveReviewEvents, trackActivity } from "../api";
+import { cardKey, createFSRS, getFSRSCard, formatDue, projectedIntervals, isDueOrNew, isNewCard, isLearning, buildPool as buildPoolFn } from "../lib/fsrsHelpers";
 
 const SESSION_SIZES = [10, 20, 30, 50, 100, 0]; // 0 = all
 
-// ---------- FSRS helpers ----------
-
-const f = fsrs(generatorParameters());
-
-/**
- * Get the FSRS card object from progress, creating a new one if needed.
- * Handles backward compatibility with old SM-2 data.
- */
-function getFSRSCard(prog) {
-  if (prog?.fsrs) {
-    // Rehydrate dates from JSON strings
-    const c = { ...prog.fsrs };
-    c.due = new Date(c.due);
-    c.last_review = c.last_review ? new Date(c.last_review) : undefined;
-    return c;
-  }
-  // No FSRS data — create a fresh card (backward compat with SM-2)
-  return createEmptyCard();
-}
-
-/**
- * Format a duration between now and a future date as a human-readable string.
- */
-function formatDue(dueDate) {
-  const now = new Date();
-  const diffMs = dueDate.getTime() - now.getTime();
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 1) return "< 1m";
-  if (diffMin < 60) return `${diffMin}m`;
-  const diffHours = Math.round(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  const diffDays = Math.round(diffMs / 86400000);
-  if (diffDays < 7) return `${diffDays}d`;
-  if (diffDays < 30) {
-    const w = Math.round(diffDays / 7);
-    return `${w}w`;
-  }
-  const m = Math.round(diffDays / 30);
-  return `${m}mo`;
-}
-
-/**
- * Compute projected intervals for all 4 ratings.
- * Returns { again: "< 1m", hard: "10m", good: "1d", easy: "4d" }
- */
-function projectedIntervals(prog) {
-  const card = getFSRSCard(prog);
-  const now = new Date();
-  const scheduling = f.repeat(card, now);
-  return {
-    again: formatDue(scheduling[Rating.Again].card.due),
-    hard: formatDue(scheduling[Rating.Hard].card.due),
-    good: formatDue(scheduling[Rating.Good].card.due),
-    easy: formatDue(scheduling[Rating.Easy].card.due),
-  };
-}
-
-/**
- * Check if a card is due or new (should be shown in session).
- */
-function isDueOrNew(prog) {
-  if (!prog || !prog.fsrs) return true; // new card
-  const card = getFSRSCard(prog);
-  return card.due <= new Date();
-}
-
-function isNewCard(prog) {
-  if (!prog || !prog.fsrs) return true;
-  return prog.fsrs.state === 0;
-}
-
-function isLearning(prog) {
-  if (!prog || !prog.fsrs) return false;
-  return prog.fsrs.state === 1 || prog.fsrs.state === 3;
-}
-
 // ---------- Component ----------
 
-export default function StudyMode({ cards, progress, onUpdateProgress }) {
+export default function StudyMode({ cards, progress, onUpdateProgress, onSessionStatsChange, deckId, fsrsParams, onRegenCard, onSuspendCard }) {
   const [sessionSize, setSessionSize] = useState(() => {
     const saved = localStorage.getItem("bc-study-session-size");
     return saved ? parseInt(saved) : 20;
@@ -103,6 +24,69 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
   const [swipeDir, setSwipeDir] = useState(null); // "left" | "right" | null
   const pendingRateRef = useRef(null);
   const [sessionStreak, setSessionStreak] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [lastAction, setLastAction] = useState(null); // { card, rating, prevProgress, prevIndex, prevAgainQueue, prevStats, prevStreak }
+
+  // Review log buffer — flush to server periodically
+  const reviewLogRef = useRef([]);
+  const flushTimerRef = useRef(null);
+
+  // Retention target from settings
+  const [retentionTarget, setRetentionTarget] = useState(() => {
+    const saved = localStorage.getItem("bc-retention-target");
+    return saved ? parseFloat(saved) : 0.9;
+  });
+
+  // New card mix: what % of the session should be new cards (0 = FSRS decides, 25/50/75/100)
+  const [newCardMix, setNewCardMix] = useState(() => {
+    const saved = localStorage.getItem("bc-new-card-mix");
+    return saved ? parseInt(saved) : 0;
+  });
+
+  // Create FSRS instance with custom params and retention target
+  const fInstance = useMemo(() => {
+    return createFSRS(fsrsParams, retentionTarget);
+  }, [fsrsParams, retentionTarget]);
+
+  // Flush review log to server
+  const flushReviewLog = useCallback(() => {
+    if (reviewLogRef.current.length === 0 || !deckId) return;
+    const events = [...reviewLogRef.current];
+    reviewLogRef.current = [];
+    saveReviewEvents(deckId, events).catch((err) => {
+      // Put events back on failure
+      reviewLogRef.current.unshift(...events);
+      console.error("Failed to flush review log:", err);
+    });
+    // Track daily activity (fire and forget)
+    const correct = events.filter(e => e.rating >= 2).length;
+    trackActivity(events.length, correct, deckId);
+  }, [deckId]);
+
+  // Flush on unmount and periodically
+  useEffect(() => {
+    return () => {
+      flushReviewLog();
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
+  }, [flushReviewLog]);
+
+  // Save retention target to localStorage
+  useEffect(() => {
+    localStorage.setItem("bc-retention-target", retentionTarget.toString());
+  }, [retentionTarget]);
+
+  // Ctrl+Z / Cmd+Z to undo last rating
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && lastAction) {
+        e.preventDefault();
+        undoLastRating();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lastAction]);
 
   // Heat level: 0 = none, 1-5 = increasingly intense glow
   const heatLevel = Math.min(5, Math.floor(sessionStreak / 5));
@@ -115,97 +99,119 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
     const fire = (opts) => confetti({ zIndex: 9999, ...opts });
 
     if (count >= 100) {
-      // NUCLEAR — sustained barrage + screen shake
-      const duration = 4000;
+      // NUCLEAR — absolute chaos, the screen should feel like it's going to break
+      const duration = 8000;
       const end = Date.now() + duration;
-      const colors = ["#ff0000", "#ff6600", "#ffcc00", "#00ff00", "#0066ff", "#9900ff", "#ff00ff"];
-      document.body.style.animation = "shake 0.3s ease-in-out 6";
-      const interval = setInterval(() => {
-        if (Date.now() > end) return clearInterval(interval);
-        fire({ particleCount: 50, startVelocity: 60, spread: 360, origin: { x: Math.random(), y: Math.random() * 0.4 }, colors, ticks: 100 });
-      }, 80);
-      // Side cannons
-      setTimeout(() => { fire({ particleCount: 200, angle: 60, spread: 80, origin: { x: 0, y: 0.7 }, colors, startVelocity: 70, ticks: 120 }); }, 200);
-      setTimeout(() => { fire({ particleCount: 200, angle: 120, spread: 80, origin: { x: 1, y: 0.7 }, colors, startVelocity: 70, ticks: 120 }); }, 400);
-      setTimeout(() => { fire({ particleCount: 300, spread: 360, origin: { x: 0.5, y: 0.3 }, colors, startVelocity: 50, ticks: 150 }); }, 800);
+      const colors = ["#ff0000", "#ff6600", "#ffcc00", "#00ff00", "#0066ff", "#9900ff", "#ff00ff", "#ffffff"];
+      const shapes = ["circle", "square"];
+
+      // Screen shake — escalating intensity
+      document.body.style.animation = "shake 0.15s ease-in-out infinite";
+
+      // Phase 1: Rapid-fire from everywhere (0-3s)
+      const barrage = setInterval(() => {
+        if (Date.now() > end - 5000) { clearInterval(barrage); return; }
+        fire({ particleCount: 80, startVelocity: 70, spread: 360, origin: { x: Math.random(), y: Math.random() * 0.6 }, colors, ticks: 120, shapes });
+      }, 50);
+
+      // Phase 1: Side cannons alternating
+      for (let i = 0; i < 8; i++) {
+        setTimeout(() => {
+          fire({ particleCount: 250, angle: 60, spread: 55, origin: { x: 0, y: 0.6 + Math.random() * 0.3 }, colors, startVelocity: 80, ticks: 150, shapes });
+        }, i * 300);
+        setTimeout(() => {
+          fire({ particleCount: 250, angle: 120, spread: 55, origin: { x: 1, y: 0.6 + Math.random() * 0.3 }, colors, startVelocity: 80, ticks: 150, shapes });
+        }, i * 300 + 150);
+      }
+
+      // Phase 2: Mega bursts from center (2-5s)
+      for (let i = 0; i < 6; i++) {
+        setTimeout(() => {
+          fire({ particleCount: 400, spread: 360, origin: { x: 0.3 + Math.random() * 0.4, y: 0.2 + Math.random() * 0.3 }, colors, startVelocity: 60, ticks: 200, gravity: 0.8, shapes });
+        }, 2000 + i * 500);
+      }
+
+      // Phase 3: The finale — everything at once (5-8s)
+      setTimeout(() => {
+        // Triple burst from bottom
+        fire({ particleCount: 500, angle: 90, spread: 120, origin: { x: 0.2, y: 1 }, colors, startVelocity: 90, ticks: 200, gravity: 1.2 });
+        fire({ particleCount: 500, angle: 90, spread: 120, origin: { x: 0.5, y: 1 }, colors, startVelocity: 100, ticks: 200, gravity: 1.2 });
+        fire({ particleCount: 500, angle: 90, spread: 120, origin: { x: 0.8, y: 1 }, colors, startVelocity: 90, ticks: 200, gravity: 1.2 });
+      }, 5000);
+
+      // The grand finale burst
+      setTimeout(() => {
+        fire({ particleCount: 800, spread: 360, origin: { x: 0.5, y: 0.4 }, colors, startVelocity: 80, ticks: 300, gravity: 0.5, scalar: 1.5, shapes });
+      }, 6000);
+
+      // Slow rain of gold (6-8s)
+      setTimeout(() => {
+        const goldRain = setInterval(() => {
+          if (Date.now() > end) { clearInterval(goldRain); return; }
+          fire({ particleCount: 15, startVelocity: 10, spread: 360, origin: { x: Math.random(), y: -0.1 }, colors: ["#FFD700", "#FFA500", "#FFFFFF"], ticks: 200, gravity: 0.3, scalar: 2 });
+        }, 100);
+      }, 6000);
+
+      // Clean up
       setTimeout(() => { document.body.style.animation = ""; }, duration);
     } else if (count >= 50) {
-      // Full screen chaos
-      const duration = 3000;
+      // Full screen war — side cannons + sustained barrage + shake
+      const duration = 5000;
       const end = Date.now() + duration;
+      const colors = ["#ff0000", "#ff6600", "#ffcc00", "#00ff00", "#0066ff", "#9900ff"];
+      document.body.style.animation = "shake 0.2s ease-in-out infinite";
       const interval = setInterval(() => {
-        if (Date.now() > end) return clearInterval(interval);
-        fire({ particleCount: 40, startVelocity: 50, spread: 360, origin: { x: Math.random(), y: Math.random() * 0.5 }, ticks: 80 });
-      }, 100);
-      fire({ particleCount: 150, angle: 60, spread: 70, origin: { x: 0, y: 0.7 }, startVelocity: 60 });
-      fire({ particleCount: 150, angle: 120, spread: 70, origin: { x: 1, y: 0.7 }, startVelocity: 60 });
+        if (Date.now() > end) { clearInterval(interval); return; }
+        fire({ particleCount: 60, startVelocity: 55, spread: 360, origin: { x: Math.random(), y: Math.random() * 0.5 }, colors, ticks: 100 });
+      }, 70);
+      // Side cannons
+      for (let i = 0; i < 4; i++) {
+        setTimeout(() => {
+          fire({ particleCount: 200, angle: 60, spread: 70, origin: { x: 0, y: 0.7 }, colors, startVelocity: 70, ticks: 120 });
+          fire({ particleCount: 200, angle: 120, spread: 70, origin: { x: 1, y: 0.7 }, colors, startVelocity: 70, ticks: 120 });
+        }, i * 600);
+      }
+      // Center mega burst
+      setTimeout(() => { fire({ particleCount: 300, spread: 360, origin: { x: 0.5, y: 0.4 }, colors, startVelocity: 60, ticks: 150 }); }, 2500);
+      setTimeout(() => { document.body.style.animation = ""; }, duration);
     } else if (count >= 30) {
-      // Solid explosion
-      fire({ particleCount: 120, spread: 100, origin: { x: 0.5, y: 0.5 }, startVelocity: 45 });
+      // Serious explosion — three waves
+      const colors = ["#6366f1", "#a855f7", "#ec4899", "#f59e0b"];
+      fire({ particleCount: 200, spread: 120, origin: { x: 0.5, y: 0.5 }, startVelocity: 50, colors, ticks: 100 });
       setTimeout(() => {
-        fire({ particleCount: 80, angle: 60, spread: 60, origin: { x: 0.1, y: 0.7 }, startVelocity: 50 });
-        fire({ particleCount: 80, angle: 120, spread: 60, origin: { x: 0.9, y: 0.7 }, startVelocity: 50 });
+        fire({ particleCount: 150, angle: 60, spread: 60, origin: { x: 0, y: 0.7 }, startVelocity: 55, colors });
+        fire({ particleCount: 150, angle: 120, spread: 60, origin: { x: 1, y: 0.7 }, startVelocity: 55, colors });
       }, 300);
+      setTimeout(() => {
+        fire({ particleCount: 200, spread: 360, origin: { x: 0.5, y: 0.3 }, startVelocity: 40, colors, ticks: 120 });
+      }, 700);
     } else if (count >= 20) {
-      // Modest burst
-      fire({ particleCount: 80, spread: 70, origin: { x: 0.5, y: 0.6 }, startVelocity: 35 });
+      // Double burst with side shots
+      fire({ particleCount: 120, spread: 90, origin: { x: 0.5, y: 0.5 }, startVelocity: 40, ticks: 80 });
       setTimeout(() => {
-        fire({ particleCount: 50, spread: 90, origin: { x: 0.3, y: 0.5 }, startVelocity: 30 });
-        fire({ particleCount: 50, spread: 90, origin: { x: 0.7, y: 0.5 }, startVelocity: 30 });
+        fire({ particleCount: 80, angle: 60, spread: 55, origin: { x: 0.1, y: 0.7 }, startVelocity: 45 });
+        fire({ particleCount: 80, angle: 120, spread: 55, origin: { x: 0.9, y: 0.7 }, startVelocity: 45 });
       }, 250);
-    } else if (count >= 10) {
-      // Nice burst — not just a sprinkle
-      fire({ particleCount: 60, spread: 80, origin: { x: 0.5, y: 0.5 }, startVelocity: 35, ticks: 70 });
       setTimeout(() => {
-        fire({ particleCount: 40, angle: 60, spread: 50, origin: { x: 0.15, y: 0.7 }, startVelocity: 40 });
-        fire({ particleCount: 40, angle: 120, spread: 50, origin: { x: 0.85, y: 0.7 }, startVelocity: 40 });
+        fire({ particleCount: 100, spread: 360, origin: { x: 0.5, y: 0.4 }, startVelocity: 35, ticks: 100 });
+      }, 500);
+    } else if (count >= 10) {
+      // Proper burst — two waves
+      fire({ particleCount: 100, spread: 100, origin: { x: 0.5, y: 0.5 }, startVelocity: 40, ticks: 80 });
+      setTimeout(() => {
+        fire({ particleCount: 60, angle: 60, spread: 50, origin: { x: 0.15, y: 0.7 }, startVelocity: 45 });
+        fire({ particleCount: 60, angle: 120, spread: 50, origin: { x: 0.85, y: 0.7 }, startVelocity: 45 });
       }, 200);
+    } else if (count >= 5) {
+      // Small but satisfying
+      fire({ particleCount: 50, spread: 70, origin: { x: 0.5, y: 0.6 }, startVelocity: 30, ticks: 60 });
     }
   }, [sessionComplete, sessionStats.reviewed]);
 
   // Build pool based on FSRS scheduling
   const buildPool = useCallback((allCards, prog, size) => {
-    const now = new Date();
-
-    const learningCards = [];
-    const dueCards = [];
-    const newCards = [];
-
-    allCards.forEach((c) => {
-      const p = prog[cardKey(c)];
-      if (isNewCard(p)) {
-        newCards.push(c);
-      } else if (isLearning(p)) {
-        // Learning/Relearning cards — show first
-        const card = getFSRSCard(p);
-        if (card.due <= now) {
-          learningCards.push({ card: c, dueDate: card.due });
-        }
-      } else {
-        // Review cards
-        const card = getFSRSCard(p);
-        if (card.due <= now) {
-          dueCards.push({ card: c, dueDate: card.due });
-        }
-        // else: not due yet, skip
-      }
-    });
-
-    // Sort due cards oldest first
-    learningCards.sort((a, b) => a.dueDate - b.dueDate);
-    dueCards.sort((a, b) => a.dueDate - b.dueDate);
-
-    const ordered = [
-      ...learningCards.map((d) => d.card),
-      ...dueCards.map((d) => d.card),
-      ...newCards,
-    ];
-
-    if (size > 0) {
-      return ordered.slice(0, size);
-    }
-    return ordered;
-  }, []);
+    return buildPoolFn(allCards, prog, size, newCardMix);
+  }, [newCardMix]);
 
   // Initialize pool
   useEffect(() => {
@@ -244,19 +250,27 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
     }
   }, [initialized, cards, progress, sessionSize, buildPool]);
 
-  // Persist session
+  // Persist session (skip if data is too large for localStorage)
   useEffect(() => {
     if (initialized) {
-      localStorage.setItem(
-        "bc-fsrs-session",
-        JSON.stringify({ pool, againQueue, index, sessionStats, sessionComplete })
-      );
+      try {
+        // Only save minimal session state, not full card data
+        const sessionData = { poolIds: pool.map(c => c.id || c.front?.slice(0, 40)), againIds: againQueue.map(c => c.id || c.front?.slice(0, 40)), index, sessionStats, sessionComplete };
+        localStorage.setItem("bc-fsrs-session", JSON.stringify(sessionData));
+      } catch {}
     }
   }, [pool, againQueue, index, sessionStats, sessionComplete, initialized]);
 
   useEffect(() => {
     localStorage.setItem("bc-study-session-size", sessionSize.toString());
   }, [sessionSize]);
+
+  // Report session stats to parent for Voice Tutor empathy engine
+  useEffect(() => {
+    if (onSessionStatsChange && initialized) {
+      onSessionStatsChange({ ...sessionStats, streak: sessionStreak });
+    }
+  }, [sessionStats, sessionStreak, onSessionStatsChange, initialized]);
 
   // Global stats
   const stats = useMemo(() => {
@@ -303,7 +317,7 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
   }, [againQueue, pool, index]);
 
   const cardProgress = currentCard ? progress[cardKey(currentCard)] : null;
-  const intervals = cardProgress || currentCard ? projectedIntervals(cardProgress) : null;
+  const intervals = cardProgress || currentCard ? projectedIntervals(cardProgress, fInstance) : null;
 
   // Rating map: button index -> FSRS Rating
   const ratingMap = {
@@ -313,16 +327,60 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
     [Rating.Easy]: Rating.Easy,
   };
 
+  function undoLastRating() {
+    if (!lastAction) return;
+    const { prevProgress, prevIndex, prevAgainQueue, prevStats, prevStreak } = lastAction;
+    onUpdateProgress(prevProgress);
+    setIndex(prevIndex);
+    setAgainQueue(prevAgainQueue);
+    setSessionStats(prevStats);
+    setSessionStreak(prevStreak);
+    setSessionComplete(false);
+    setLastAction(null);
+  }
+
   function applyRating(rating) {
     if (!currentCard) return;
+
+    // Save state for undo
+    setLastAction({
+      card: currentCard,
+      rating,
+      prevProgress: { ...progress },
+      prevIndex: index,
+      prevAgainQueue: [...againQueue],
+      prevStats: { ...sessionStats },
+      prevStreak: sessionStreak,
+    });
 
     const key = cardKey(currentCard);
     const prev = progress[key] || {};
     const card = getFSRSCard(prev);
     const now = new Date();
-    const scheduling = f.repeat(card, now);
+    const scheduling = fInstance.repeat(card, now);
     const result = scheduling[rating];
     const updatedCard = result.card;
+
+    // Log review event for parameter optimization
+    reviewLogRef.current.push({
+      cardKey: key,
+      rating,
+      timestamp: now.toISOString(),
+      elapsed_days: card.elapsed_days || 0,
+      scheduled_days: card.scheduled_days || 0,
+      state: card.state,
+      stability: card.stability,
+      difficulty: card.difficulty,
+      newStability: updatedCard.stability,
+      newDifficulty: updatedCard.difficulty,
+      newDue: updatedCard.due.toISOString(),
+    });
+
+    // Flush every 10 reviews
+    if (reviewLogRef.current.length >= 10) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = setTimeout(flushReviewLog, 500);
+    }
 
     // Serialize the FSRS card for storage (dates to ISO strings)
     const fsrsData = {
@@ -345,17 +403,6 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
     };
 
     onUpdateProgress(key, updated);
-
-    // Auto-generate helper cards when a card hits 3+ lapses (fire and forget)
-    if (rating === Rating.Again && updatedCard.lapses >= 3 && !prev._helpersGenerated) {
-      onUpdateProgress(key, { ...updated, _helpersGenerated: true });
-      generateHelperCards(currentCard).then(({ cards: helpers }) => {
-        if (helpers?.length > 0) {
-          // Add helper cards to the pool for this session
-          setPool(p => [...p, ...helpers]);
-        }
-      }).catch(() => {});
-    }
 
     // Stats
     setSessionStats((s) => ({
@@ -400,6 +447,14 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
     // Check if session is truly complete (pool done + again queue empty)
     if (againQueue.length === 0 && rating !== Rating.Again && index >= pool.length - 1 && pool.length > 0) {
       setSessionComplete(true);
+      // Track study session completion
+      if (window.plausible) {
+        window.plausible("Study Session Complete", { props: {
+          reviewed: String(sessionStats.reviewed + 1),
+          correct: String(sessionStats.correct + (rating >= Rating.Good ? 1 : 0)),
+          accuracy: String(Math.round(((sessionStats.correct + (rating >= Rating.Good ? 1 : 0)) / (sessionStats.reviewed + 1)) * 100)),
+        }});
+      }
     }
   }
 
@@ -456,23 +511,6 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
   }
 
   if (!initialized) return null;
-
-  // No cards in deck at all
-  if (cards.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
-          <i className="fa-solid fa-cards-blank text-3xl text-gray-400" />
-        </div>
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
-          No cards yet
-        </h2>
-        <p className="text-gray-500 dark:text-gray-400">
-          Add cards to this deck to start studying.
-        </p>
-      </div>
-    );
-  }
 
   // Session complete screen — only show if you actually reviewed cards
   if (sessionComplete && sessionStats.reviewed > 0) {
@@ -587,156 +625,27 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
   // Card state label
   const stateLabel = fsrsCard.state === 0 ? "New" : fsrsCard.state === 1 ? "Learning" : fsrsCard.state === 2 ? "Review" : "Relearning";
 
-  // Card type rotation — for review cards (reps > 1), sometimes show as a different format
-  const displayCard = useMemo(() => {
-    if (!currentCard) return null;
-    try {
-      const reps = fsrsCard.reps || 0;
-      // Only rotate for cards that have been seen 2+ times
-      if (reps < 2) return currentCard;
-      // Use a deterministic "random" based on card + reps to be consistent
-      const hash = (currentCard.front.length * 31 + reps * 7) % 100;
-      if (hash < 30) {
-        // Gap fill: replace a key term in the front with ______
-        const words = (currentCard.back || "").split(/\s+/).filter(w => w.length > 4);
-        if (words.length > 0) {
-          const keyWord = words[Math.min(Math.floor(hash / 10), words.length - 1)];
-          const cleanWord = keyWord.replace(/[.,;:!?()]/g, "");
-          if (cleanWord) {
-            return {
-              ...currentCard,
-              front: `Fill in the blank: ${currentCard.back.replace(new RegExp(cleanWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), "______").slice(0, 200)}`,
-              _rotated: "gap-fill",
-            };
-          }
-        }
-      } else if (hash < 45) {
-        // Reverse card: show answer, ask for the question concept
-        return {
-          ...currentCard,
-          front: `What concept does this describe?\n\n"${(currentCard.back || "").slice(0, 150)}${(currentCard.back || "").length > 150 ? "..." : ""}"`,
-          back: currentCard.front,
-          _rotated: "reversed",
-        };
-      }
-      return currentCard;
-    } catch {
-      return currentCard;
-    }
-  }, [currentCard, fsrsCard.reps]);
-
   return (
     <div>
-      {/* Session size selector */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            <i className="fa-solid fa-layer-group mr-1" />
-            Session:
-          </span>
-          <div className="flex gap-1">
-            {SESSION_SIZES.map((size) => (
-              <button
-                key={size}
-                onClick={() => handleSessionSizeChange(size)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  sessionSize === size
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-                }`}
-              >
-                {size === 0 ? "All" : size}
-              </button>
-            ))}
-          </div>
-        </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          {againQueue.length > 0 ? (
-            <span className="text-red-500">
-              <i className="fa-solid fa-rotate-left mr-1" />
-              {againQueue.length} to redo
-            </span>
-          ) : (
-            `${poolPosition} / ${totalInSession}`
-          )}
-        </span>
-      </div>
-
-      {/* Progress bar */}
-      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-4">
-        <div
-          className="bg-indigo-500 h-1.5 rounded-full transition-all"
-          style={{ width: `${progressPct}%` }}
-        />
-      </div>
-
-      {/* Stats bar */}
-      <div className="grid grid-cols-5 gap-2 mb-6">
-        <div className="bg-orange-50 dark:bg-orange-900/30 rounded-xl p-3 text-center">
-          <p className="text-xl font-bold text-orange-700 dark:text-orange-400">
-            {stats.dueToday}
-          </p>
-          <p className="text-xs text-orange-600 dark:text-orange-500">Due Today</p>
-        </div>
-        <div className="bg-yellow-50 dark:bg-yellow-900/30 rounded-xl p-3 text-center">
-          <p className="text-xl font-bold text-yellow-700 dark:text-yellow-400">
-            {stats.learning}
-          </p>
-          <p className="text-xs text-yellow-600 dark:text-yellow-500">Learning</p>
-        </div>
-        <div className="bg-blue-50 dark:bg-blue-900/30 rounded-xl p-3 text-center">
-          <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
-            {stats.young}
-          </p>
-          <p className="text-xs text-blue-600 dark:text-blue-500">Young</p>
-        </div>
-        <div className="bg-green-50 dark:bg-green-900/30 rounded-xl p-3 text-center">
-          <p className="text-xl font-bold text-green-700 dark:text-green-400">
-            {stats.mature}
-          </p>
-          <p className="text-xs text-green-600 dark:text-green-500">Mature</p>
-        </div>
-        <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-xl p-3 text-center">
-          <p className="text-xl font-bold text-indigo-700 dark:text-indigo-400">
-            {stats.newCount}
-          </p>
-          <p className="text-xs text-indigo-600 dark:text-indigo-500">New</p>
-        </div>
-      </div>
-
-      {/* Card with slide animation + heat glow */}
-      <div className="rounded-2xl mb-4">
-        <div
-          className={swipeDir === "left" ? "animate-slide-out-left" : swipeDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
-          onAnimationEnd={handleSwipeEnd}
-        >
-          <FlashCard
-            card={displayCard || currentCard}
-            cardKey={`study-${againQueue.length > 0 ? "again-" + currentCard.front.slice(0, 20) : index}-${displayCard?._rotated || ""}`}
-            showActions
-            sm2Rating
-            intervals={intervals}
-            onRate={handleRate}
-            heatLevel={heatLevel}
-          />
-        </div>
-      </div>
-
-      {/* Streak / state indicator */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            <i className="fa-solid fa-fire mr-1" />
-            Streak:
+      {/* Compact status bar */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {againQueue.length > 0 ? (
+              <span className="text-red-500">
+                <i className="fa-solid fa-rotate-left mr-1" />
+                {againQueue.length} to redo
+              </span>
+            ) : (
+              <>{poolPosition} / {totalInSession}</>
+            )}
           </span>
           <div className="flex gap-0.5">
             {[1, 2, 3, 4, 5].map((n) => (
               <span
                 key={n}
-                className={`text-base transition-all duration-300 ${
-                  n <= streak
-                    ? "opacity-100 scale-110"
-                    : "opacity-20 grayscale"
+                className={`text-sm transition-all duration-300 ${
+                  n <= streak ? "opacity-100 scale-110" : "opacity-20"
                 }`}
                 style={n <= streak ? { filter: "none" } : { filter: "grayscale(1)" }}
               >
@@ -747,19 +656,212 @@ export default function StudyMode({ cards, progress, onUpdateProgress }) {
           {streak >= 5 && (
             <span className="text-xs text-orange-500 font-bold animate-pulse">FIRE!</span>
           )}
-          {streak >= 3 && streak < 5 && (
-            <span className="text-xs text-orange-400 font-medium">On fire!</span>
-          )}
         </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          {stateLabel} | S: {fsrsCard.stability?.toFixed(1) || "0.0"} | D: {fsrsCard.difficulty?.toFixed(1) || "0.0"}
-        </span>
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs transition-colors ${
+            showSettings
+              ? "bg-indigo-600 text-white"
+              : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
+        >
+          <i className={`fa-solid ${showSettings ? "fa-times" : "fa-sliders"}`} />
+        </button>
       </div>
 
-      <div className="text-center">
+      {/* Progress bar */}
+      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-1.5">
+        <div
+          className="bg-indigo-500 h-1.5 rounded-full transition-all"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+
+      {/* Session breakdown: New / Learning / Review */}
+      {(() => {
+        const newCount = pool.filter(c => isNewCard(progress[cardKey(c)])).length;
+        const learnCount = pool.filter(c => { const p = progress[cardKey(c)]; return p?.fsrs && (p.fsrs.state === 1 || p.fsrs.state === 3); }).length;
+        const reviewCount = pool.length - newCount - learnCount;
+        return (
+          <div className="flex items-center gap-3 mb-3 text-[10px]">
+            <span className="text-blue-500"><i className="fa-solid fa-circle text-[6px] mr-1" />{newCount} new</span>
+            <span className="text-orange-500"><i className="fa-solid fa-circle text-[6px] mr-1" />{learnCount} learning</span>
+            <span className="text-green-500"><i className="fa-solid fa-circle text-[6px] mr-1" />{reviewCount} review</span>
+            {againQueue.length > 0 && <span className="text-red-500"><i className="fa-solid fa-circle text-[6px] mr-1" />{againQueue.length} again</span>}
+          </div>
+        );
+      })()}
+
+      {/* Expandable settings drawer */}
+      {showSettings && (
+        <div className="mb-4 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 space-y-4 animate-slide-in">
+          {/* Session size */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              <i className="fa-solid fa-layer-group mr-1" />
+              Session
+            </span>
+            <div className="flex gap-1">
+              {SESSION_SIZES.map((size) => (
+                <button
+                  key={size}
+                  onClick={() => handleSessionSizeChange(size)}
+                  className={`px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+                    sessionSize === size
+                      ? "bg-indigo-600 text-white"
+                      : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  {size === 0 ? "All" : size}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Retention target */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              <i className="fa-solid fa-bullseye mr-1" />
+              Retention
+            </span>
+            <div className="flex gap-1">
+              {[0.85, 0.9, 0.95].map((target) => (
+                <button
+                  key={target}
+                  onClick={() => setRetentionTarget(target)}
+                  className={`px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+                    retentionTarget === target
+                      ? "bg-emerald-600 text-white"
+                      : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  {Math.round(target * 100)}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* New card mix */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              <i className="fa-solid fa-sparkles mr-1" />
+              New cards
+            </span>
+            <div className="flex gap-1">
+              {[
+                { val: 0, label: "Auto" },
+                { val: 25, label: "25%" },
+                { val: 50, label: "50%" },
+                { val: 75, label: "75%" },
+                { val: 100, label: "All" },
+              ].map(({ val, label }) => (
+                <button
+                  key={val}
+                  onClick={() => {
+                    setNewCardMix(val);
+                    localStorage.setItem("bc-new-card-mix", String(val));
+                  }}
+                  className={`px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+                    newCardMix === val
+                      ? "bg-purple-600 text-white"
+                      : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Show intervals toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              <i className="fa-solid fa-clock mr-1" />
+              Show intervals
+            </span>
+            <button
+              onClick={() => {
+                const current = localStorage.getItem("bc-show-intervals") === "true";
+                localStorage.setItem("bc-show-intervals", current ? "false" : "true");
+                // Force re-render
+                setRetentionTarget(prev => prev);
+              }}
+              className={`relative inline-flex h-6 w-10 items-center rounded-full transition-colors ${
+                localStorage.getItem("bc-show-intervals") === "true" ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-600"
+              } cursor-pointer`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                localStorage.getItem("bc-show-intervals") === "true" ? "translate-x-5" : "translate-x-1"
+              }`} />
+            </button>
+          </div>
+
+          {/* Stats grid */}
+          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-5 gap-1.5 md:gap-2">
+            {[
+              { val: stats.dueToday, label: "Due", color: "text-orange-500" },
+              { val: stats.learning, label: "Learn", color: "text-yellow-500" },
+              { val: stats.young, label: "Young", color: "text-blue-500" },
+              { val: stats.mature, label: "Mature", color: "text-green-500" },
+              { val: stats.newCount, label: "New", color: "text-indigo-500" },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <p className={`text-lg font-bold ${s.color}`}>{s.val}</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* FSRS card info */}
+          <div className="text-center text-xs text-gray-400 dark:text-gray-500">
+            {stateLabel} | S: {fsrsCard.stability?.toFixed(1) || "0.0"} | D: {fsrsCard.difficulty?.toFixed(1) || "0.0"}
+          </div>
+        </div>
+      )}
+
+      {/* Card with slide animation + heat glow */}
+      <div className="rounded-2xl mx-2 sm:mx-0 md:mx-4 overflow-x-clip">
+        <div
+          className={swipeDir === "left" ? "animate-slide-out-left" : swipeDir === "right" ? "animate-slide-out-right" : "animate-slide-in"}
+          onAnimationEnd={handleSwipeEnd}
+        >
+          <FlashCard
+            card={currentCard}
+            cardKey={`study-${againQueue.length > 0 ? "again-" + currentCard.front.slice(0, 20) : index}`}
+            showActions
+            sm2Rating
+            intervals={intervals}
+            onRate={handleRate}
+            heatLevel={heatLevel}
+            onRegenCard={onRegenCard}
+          />
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-center gap-4">
+        {lastAction && (
+          <button
+            onClick={undoLastRating}
+            className="text-sm text-indigo-500 hover:text-indigo-400 flex items-center gap-1.5"
+          >
+            <i className="fa-solid fa-rotate-left text-xs" /> Undo
+          </button>
+        )}
+        {onSuspendCard && currentCard && (
+          <button
+            onClick={() => {
+              onSuspendCard(currentCard);
+              // Skip to next card
+              if (index < pool.length - 1) setIndex(i => i + 1);
+            }}
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-amber-500 flex items-center gap-1.5"
+          >
+            <i className="fa-solid fa-eye-slash text-xs" /> Suspend
+          </button>
+        )}
         <button
           onClick={resetSession}
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1.5 mx-auto"
+          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1.5"
         >
           <RotateIcon className="text-xs" /> New Session
         </button>

@@ -27,39 +27,21 @@ const PLANS = [
     ],
   },
   {
-    id: "starter",
-    name: "Starter",
-    price: 9,
+    id: "pro_monthly",
+    name: "Pro",
+    price: 12,
     interval: "month",
-    priceKey: "starter_monthly",
+    priceKey: "pro_monthly",
     popular: true,
     features: [
       "Everything in Free, plus:",
-      "AI-generated cards from documents",
+      "AI-generated cards from any URL",
       "AI-generated quizzes",
-      "AI Tutor — explanations & mnemonics",
-      "Audio card narration",
-      "Push notification reminders",
-    ],
-    missing: [
-      "Voice Tutor (ElevenLabs)",
-      "Audio lessons",
+      "AI Tutor, explanations & mnemonics",
+      "Sage audio lessons",
+      "Nova voice tutor",
       "Deep dive research",
-    ],
-  },
-  {
-    id: "pro_monthly",
-    name: "Pro",
-    price: 19,
-    interval: "month",
-    priceKey: "pro_monthly",
-    features: [
-      "Everything in Starter, plus:",
-      "Voice Tutor — real-time conversation with Nova",
-      "Audio study sessions",
-      "Deep dive research with web sources",
-      "Multiple document library",
-      "Unlimited custom cards",
+      "Unlimited documents",
       "Priority support",
     ],
     missing: [],
@@ -67,13 +49,13 @@ const PLANS = [
   {
     id: "pro_yearly",
     name: "Pro Annual",
-    price: 149,
+    price: 108,
     interval: "year",
     priceKey: "pro_yearly",
-    savings: "Save $79/yr",
+    savings: "Save 25%",
     features: [
       "Everything in Pro",
-      "Over 4 months free",
+      "3 months free",
       "Lock in your rate",
     ],
     missing: [],
@@ -122,7 +104,7 @@ export default function PricingPage({ email, onSubscribed, onBack, dark }) {
             Choose your plan
           </h2>
           <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl mx-auto">
-            Start with a 7-day free trial. No credit card required upfront. Cancel anytime.
+            Start with a 30-day free trial. No credit card required upfront. Cancel anytime.
           </p>
         </div>
 
@@ -175,7 +157,7 @@ export default function PricingPage({ email, onSubscribed, onBack, dark }) {
                 {loading === plan.priceKey ? (
                   <><i className="fa-solid fa-spinner fa-spin mr-2" />Processing...</>
                 ) : (
-                  plan.price === 0 ? "Get Started" : "Start 7-day free trial"
+                  plan.price === 0 ? "Get Started" : "Start 30-day free trial"
                 )}
               </button>
 

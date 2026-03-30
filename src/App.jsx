@@ -1,33 +1,51 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useAuth } from "./hooks/useAuth";
-import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scoreCards, regenCard, scrapeDocument, searchAndScrape, crawlStart, crawlPoll, extractCards, saveStudyPlan, loadStudyPlan, checkSubscription, manageSubscription, loadDecks, loadDeck, saveDeck, deleteDeck as apiDeleteDeck, seedSampleDecks, resetAccount, precacheFirstPodcast, subscribeToDeck } from "./api";
-import PricingPage from "./components/PricingPage";
-import DeckLibrary from "./components/DeckLibrary";
-import InstallPrompt from "./components/InstallPrompt";
-import NotificationSettings from "./components/NotificationSettings";
-import SetupScreen from "./components/SetupScreen";
-import FlipMode from "./components/FlipMode";
-import StudyMode from "./components/StudyMode";
-import QuizMode from "./components/QuizMode";
-import TutorMode from "./components/TutorMode";
-import DeepDiveMode from "./components/DeepDiveMode";
-import AudioMode from "./components/AudioMode";
-import VoiceTutorMode from "./components/VoiceTutorMode";
-import AboutPage from "./components/AboutPage";
-import CardManager from "./components/CardManager";
-import PlannerMode from "./components/PlannerMode";
-import LandingPage from "./components/LandingPage";
-import PrivacyPolicy from "./components/PrivacyPolicy";
-import TermsOfService from "./components/TermsOfService";
-import ContactPage from "./components/ContactPage";
+import { useHistoryNav } from "./hooks/useHistoryNav";
+import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scoreCards, regenCard, scrapeDocument, searchAndScrape, crawlStart, crawlPoll, extractCards, saveStudyPlan, loadStudyPlan, checkSubscription, loadDecks, loadDeck, saveDeck, saveDeckV2, deleteDeck as apiDeleteDeck, seedSampleDecks, precacheFirstPodcast, subscribeToDeck, saveDeckProgress, loadAllDeckCards, saveProfile, loadProfile, saveDeckGroups, assignDeckGroup } from "./api";
+import { getProfile as fsGetProfile, getDecks as fsGetDecks, getDeckProgress as fsGetProgress, getStudyPlan as fsGetStudyPlan, onDecksChanged, getDeckGroups as fsGetDeckGroups, onDeckGroupsChanged, onNotificationsChanged } from "./lib/firestoreClient";
+import AppHeader from "./components/AppHeader";
+import MobileNav from "./components/MobileNav";
+import DeleteAccountModal from "./components/DeleteAccountModal";
+import ErrorBoundary from "./components/ErrorBoundary";
+import SubNav from "./components/SubNav";
 
-function ensureCardIds(cards) {
-  return cards.map((c, i) =>
-    c.id ? c : { ...c, id: `gen-${i}-${(c.front || "").slice(0, 20).replace(/\W/g, "")}` }
+// Core study mode — loaded eagerly (most common view)
+import StudyMode from "./components/StudyMode";
+
+// Lazy-loaded components — split into separate chunks
+const PricingPage = lazy(() => import("./components/PricingPage"));
+const DeckLibrary = lazy(() => import("./components/DeckLibrary"));
+const InstallPrompt = lazy(() => import("./components/InstallPrompt"));
+const NotificationSettings = lazy(() => import("./components/NotificationSettings"));
+const SetupScreen = lazy(() => import("./components/SetupScreen"));
+const FlipMode = lazy(() => import("./components/FlipMode"));
+const QuizMode = lazy(() => import("./components/QuizMode"));
+const TutorMode = lazy(() => import("./components/TutorMode"));
+const DeepDiveMode = lazy(() => import("./components/DeepDiveMode"));
+const AudioMode = lazy(() => import("./components/AudioMode"));
+const VoiceTutorMode = lazy(() => import("./components/VoiceTutorMode"));
+const AboutPage = lazy(() => import("./components/AboutPage"));
+const CardManager = lazy(() => import("./components/CardManager"));
+const PlannerMode = lazy(() => import("./components/PlannerMode"));
+const LandingPage = lazy(() => import("./components/LandingPage"));
+const LandingPageV2 = lazy(() => import("./components/LandingPageV2"));
+const PrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./components/TermsOfService"));
+const ContactPage = lazy(() => import("./components/ContactPage"));
+const Onboarding = lazy(() => import("./components/Onboarding"));
+const Settings = lazy(() => import("./components/Settings"));
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <i className="fa-solid fa-spinner fa-spin text-indigo-500 text-xl" />
+    </div>
   );
 }
+
+import { ensureCardIds } from "./lib/cardUtils";
 
 const CATEGORIES = [
   "All",
@@ -63,19 +81,30 @@ const CATEGORIES = [
   "Custom",
 ];
 
-// Main nav tabs (study modes only)
-const MODES = [
-  { id: "flip", label: "Cards", icon: "fa-solid fa-clone" },
-  { id: "study", label: "Study", icon: "fa-solid fa-book-open" },
-  { id: "quiz", label: "Quiz", icon: "fa-solid fa-circle-question" },
-  { id: "tutor", label: "Tutor", icon: "fa-solid fa-graduation-cap" },
-  { id: "deepdive", label: "Research", icon: "fa-solid fa-microscope" },
-  { id: "audio", label: "Audio", icon: "fa-solid fa-headphones" },
-  { id: "voice", label: "Voice Tutor", icon: "fa-solid fa-headset" },
+// 4-tab navigation system
+const TABS = [
+  { id: "study", label: "Study", icon: "fa-solid fa-book-open", subModes: [
+    { id: "study", label: "Review" },
+  ]},
+  { id: "test", label: "Test", icon: "fa-solid fa-brain", subModes: [
+    { id: "quiz", label: "Quiz" },
+    { id: "tutor", label: "Tutor", pro: true },
+    { id: "deepdive", label: "Research", pro: true },
+  ]},
+  { id: "sage", label: "Sage", icon: "fa-solid fa-podcast", subModes: [
+    { id: "audio", label: "Audio", pro: true },
+  ]},
+  { id: "nova", label: "Nova", icon: "fa-solid fa-headset", subModes: [
+    { id: "voice", label: "Voice", pro: true },
+  ]},
 ];
 
-// These modes are accessed from the user menu
-const MENU_MODES = ["library", "manage", "planner"];
+// Map sub-mode IDs to their parent tab
+const SUB_MODE_TO_TAB = {};
+TABS.forEach(tab => tab.subModes.forEach(sm => { SUB_MODE_TO_TAB[sm.id] = tab.id; }));
+
+// Legacy compatibility — modes accessible from menu only
+const MENU_MODES = ["library", "flip", "manage"];
 
 // Plausible analytics helper
 function trackEvent(name, props) {
@@ -85,9 +114,10 @@ function trackEvent(name, props) {
 }
 
 export default function App() {
-  const [cards, setCards] = useLocalStorage("mcat-cards", []);
-  const [progress, setProgress] = useLocalStorage("mcat-progress", {});
-  const [mode, setMode] = useState("flip");
+  const [cards, setCards] = useState([]);
+  const [progress, setProgress] = useState({});
+  const [mode, setMode] = useState("study");
+  const [activeTab, setActiveTab] = useState("cards");
   const [activeCategory, setActiveCategory] = useState("All");
   const [showSetup, setShowSetup] = useState(false);
   const [page, setPage] = useState(null);
@@ -95,6 +125,7 @@ export default function App() {
   const [dark, setDark] = useDarkMode();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [studySessionStats, setStudySessionStats] = useState(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
@@ -102,16 +133,50 @@ export default function App() {
   const [subscription, setSubscription] = useLocalStorage("bc-subscription", null);
   const [showPricing, setShowPricing] = useState(false);
   const [decks, setDecks] = useState([]);
+  const [deckGroups, setDeckGroups] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
   const [activeDeckId, setActiveDeckId] = useLocalStorage("bc-active-deck", null);
   const [autoSeeding, setAutoSeeding] = useState(false);
   const [hasEverLoadedDecks, setHasEverLoadedDecks] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState("");
-  const { user, accessToken, login, logout, handleCallback } = useAuth();
+  const [userProfile, setUserProfile] = useState(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const { user, accessToken, authReady, login, loginWithEmail, emailSent, logout, otpStep, otpEmail, otpError, sendOTP, verifyOTP, setOtpStep } = useAuth();
 
-  // Handle Google OAuth callback
-  useEffect(() => {
-    handleCallback();
-  }, [handleCallback]);
+  // Sync browser history with app navigation (back/forward buttons)
+  const handleHistoryNav = useCallback((state) => {
+    if (state.page) {
+      setPage(state.page);
+      setShowPricing(false);
+      setShowSettings(false);
+    } else if (state.showPricing) {
+      setPage(null);
+      setShowPricing(true);
+      setShowSettings(false);
+    } else if (state.showSettings) {
+      setPage(null);
+      setShowPricing(false);
+      setShowSettings(true);
+    } else {
+      setPage(null);
+      setShowPricing(false);
+      setShowSettings(false);
+      if (state.mode) {
+        window.dispatchEvent(new CustomEvent("bc-stop-audio"));
+        setMode(state.mode);
+        const parentTab = SUB_MODE_TO_TAB[state.mode];
+        if (parentTab) setActiveTab(parentTab);
+      }
+    }
+  }, []);
+
+  useHistoryNav(
+    { mode, page, showPricing, showSettings },
+    handleHistoryNav
+  );
 
   // Set auth token and user ID for API calls when user changes
   useEffect(() => {
@@ -122,6 +187,42 @@ export default function App() {
     }
   }, [accessToken, user?.id]);
 
+  // Initialize native push notification listeners (Capacitor)
+  useEffect(() => {
+    import("./lib/pushNotifications").then(({ initPushListeners }) => {
+      initPushListeners();
+    }).catch(() => {});
+  }, []);
+
+
+  // Load user profile — direct Firestore read (instant), API fallback
+  useEffect(() => {
+    if (!user?.id) {
+      setProfileLoaded(false);
+      setUserProfile(null);
+      setShowOnboarding(false);
+      return;
+    }
+    (async () => {
+      try {
+        // Try direct Firestore first (instant, cached offline)
+        let profile = await fsGetProfile(user.id);
+        // Fallback to API if Firestore returns nothing (data may not be migrated yet)
+        if (!profile) {
+          const res = await loadProfile();
+          profile = res.profile;
+        }
+        setUserProfile(profile);
+        if (!profile || !profile.onboardingComplete) {
+          setShowOnboarding(true);
+        }
+      } catch {
+        setShowOnboarding(true);
+      } finally {
+        setProfileLoaded(true);
+      }
+    })();
+  }, [user?.id]);
 
   // Check subscription status
   useEffect(() => {
@@ -147,42 +248,86 @@ export default function App() {
     // Stop any playing audio when switching modes
     window.dispatchEvent(new CustomEvent("bc-stop-audio"));
     setMode(modeId);
+    // Sync active tab
+    const parentTab = SUB_MODE_TO_TAB[modeId];
+    if (parentTab) setActiveTab(parentTab);
   }
 
-  // Load decks from server (single source of truth for cards)
+  function handleTabChange(tabId) {
+    const tab = TABS.find(t => t.id === tabId);
+    if (!tab) return;
+    setActiveTab(tabId);
+    // Switch to the first non-pro sub-mode, or first sub-mode if user is pro
+    const firstAvailable = tab.subModes.find(sm => !sm.pro || isPro) || tab.subModes[0];
+    handleModeChange(firstAvailable.id);
+  }
+
+  function handleSubModeChange(subModeId) {
+    handleModeChange(subModeId);
+  }
+
+  // In-memory deck cache (avoids re-downloading 500KB on deck switch)
+  const deckCacheRef = useRef(new Map());
+
+  // Load decks — direct Firestore read with API fallback, real-time listener
   useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
 
+    let unsubDecks = null;
+    let unsubGroups = null;
+    let unsubNotifs = null;
+
     async function initDecks() {
-      // Ensure userId is set before any API calls
       if (user?.id) setUserId(user.id);
       if (accessToken) setAuthToken(accessToken);
 
       try {
-        // Load study plan
+        // Load study plan — direct Firestore, API fallback
         try {
-          const planData = await loadStudyPlan();
-          if (planData.plan) setStudyPlan(planData.plan);
+          const plan = await fsGetStudyPlan(user.id);
+          if (plan) {
+            setStudyPlan(plan.plan || plan);
+          } else {
+            const planData = await loadStudyPlan();
+            if (planData.plan) setStudyPlan(planData.plan);
+          }
         } catch {}
 
-        const { decks: d } = await loadDecks();
+        // Load deck groups
+        try {
+          const groupsData = await fsGetDeckGroups(user.id);
+          if (groupsData?.groups) setDeckGroups(groupsData.groups);
+        } catch {}
+
+        // Load deck list — direct Firestore first (instant)
+        let d = await fsGetDecks(user.id);
+        if (!d || d.length === 0) {
+          // Fallback to API (triggers lazy migration from Blobs)
+          const res = await loadDecks();
+          d = res.decks;
+        }
 
         if (d && d.length > 0) {
           setDecks(d);
           setHasEverLoadedDecks(true);
-          // Use saved active deck if it exists in the loaded list, otherwise first deck
+          localStorage.setItem("bc-has-had-decks", "true");
           const savedExists = activeDeckId && d.some(dk => dk.id === activeDeckId);
           const targetId = savedExists ? activeDeckId : d[0].id;
           setActiveDeckId(targetId);
-          // Load the active deck's full cards
+          // Load cards + progress for active deck
           try {
+            // Try direct Firestore for progress
+            const fsProgress = await fsGetProgress(user.id, targetId);
+            if (fsProgress) setProgress(fsProgress);
+            // Cards still come from API (too large for Firestore docs)
             const { deck: fullDeck } = await loadDeck(targetId);
             if (fullDeck?.cards?.length > 0) {
               setCards(ensureCardIds(fullDeck.cards));
-              setProgress(fullDeck.progress || {});
+              deckCacheRef.current.set(targetId, { cards: fullDeck.cards, at: Date.now() });
+              if (!fsProgress && fullDeck.progress) setProgress(fullDeck.progress);
             }
           } catch (e) {
             console.log("Failed to load active deck cards:", e);
@@ -207,10 +352,23 @@ export default function App() {
               setProgress(data.progress || {});
             }
           } catch {
-            // No old cards — autoSeedEffect will handle seeding for new users
             console.log("No legacy cards found, auto-seed will handle new user setup");
           }
         }
+
+        // Start real-time listeners
+        unsubDecks = onDecksChanged(user.id, (updatedDecks) => {
+          if (updatedDecks.length > 0) {
+            setDecks(updatedDecks);
+            setHasEverLoadedDecks(true);
+          }
+        });
+        unsubGroups = onDeckGroupsChanged(user.id, (data) => {
+          if (data?.groups) setDeckGroups(data.groups);
+        });
+        unsubNotifs = onNotificationsChanged(user.id, (notifs) => {
+          setNotifications(notifs.slice(0, 50));
+        });
       } catch (err) {
         console.log("Failed to load decks:", err);
       } finally {
@@ -219,12 +377,19 @@ export default function App() {
     }
 
     initDecks();
+
+    return () => {
+      if (unsubDecks) unsubDecks();
+      if (unsubGroups) unsubGroups();
+      if (unsubNotifs) unsubNotifs();
+    };
   }, [user]);
 
   // Deck management
   // Shared helper: chunk content and batch-generate cards
-  async function generateFromContent(content, setStatus) {
-    const chunkSize = 4000; // Smaller chunks = faster per call, less likely to timeout
+  async function generateFromContent(content, setStatus, { density = "balanced" } = {}) {
+    const densityChunkSize = { concise: 8000, balanced: 4000, comprehensive: 2500 };
+    const chunkSize = densityChunkSize[density] || 4000;
     const chunks = [];
     for (let i = 0; i < content.length; i += chunkSize) {
       chunks.push(content.slice(i, i + chunkSize));
@@ -238,7 +403,7 @@ export default function App() {
     async function generateWithRetry(chunk, topics, retries = 2) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-          return await generateCards(chunk, null, topics || undefined);
+          return await generateCards(chunk, null, topics || undefined, density);
         } catch (e) {
           if (attempt === retries) {
             console.error("Chunk failed after retries:", e.message);
@@ -301,16 +466,34 @@ export default function App() {
   // Shared helper: finalize deck after card generation
   async function finalizeDeck(deckId, deck, generatedCards, extraMeta = {}) {
     const updatedDeck = { ...deck, cards: generatedCards, cardCount: generatedCards.length, ...extraMeta };
-    await saveDeck(deckId, updatedDeck);
+
+    // For large decks, save in chunks to avoid payload size limits
+    if (generatedCards.length > 2000) {
+      const CHUNK = 2000;
+      const { cards, ...meta } = updatedDeck;
+      // Save metadata first (no cards)
+      await saveDeck(deckId, { ...meta, cards: [], cardCount: generatedCards.length });
+      // Then save cards in chunks via v2
+      for (let i = 0; i < generatedCards.length; i += CHUNK) {
+        const chunk = generatedCards.slice(i, i + CHUNK);
+        await saveDeckV2(deckId, { meta, cards: chunk, progress: i === 0 ? {} : undefined });
+        setGeneratingStatus(`Saving cards ${Math.min(i + CHUNK, generatedCards.length)}/${generatedCards.length}...`);
+      }
+    } else {
+      await saveDeck(deckId, updatedDeck);
+    }
+
+    deckCacheRef.current.set(deckId, { cards: generatedCards, at: Date.now() });
     setDecks(prev => prev.map(d => d.id === deckId ? { id: deckId, ...updatedDeck } : d));
     setCards(generatedCards);
-    setGeneratingStatus(`Done! ${generatedCards.length} cards generated.`);
-    setMode("flip");
+    setGeneratingStatus(`Done! ${generatedCards.length} cards ready.`);
+    setMode("study");
     if (generatedCards.length > 0) precacheFirstPodcast(generatedCards[0]);
   }
 
   async function handleCreateDeck(name, docUrl, options = {}) {
-    trackEvent("Deck Created", { hasDoc: !!docUrl, hasTopic: !!options.topic, hasCrawl: !!options.crawl, name });
+    const source = options.skipGenerate ? "anki-import" : options.uploadedContent ? "pdf-upload" : options.topic ? "topic-search" : options.crawl ? "site-crawl" : docUrl ? "url" : "manual";
+    trackEvent("Deck Created", { source, cardCount: options.directCards?.length || 0 });
     const deckId = "deck-" + Date.now();
     const deck = {
       name,
@@ -327,7 +510,26 @@ export default function App() {
     setCards([]);
     setProgress({});
 
-    if (options.topic) {
+    if (options.skipGenerate && options.directCards) {
+      // === DIRECT IMPORT (Anki): Cards are already parsed, just save ===
+      const withIds = ensureCardIds(options.directCards);
+      await finalizeDeck(deckId, deck, withIds, { sourceType: "anki-import" });
+    } else if (options.uploadedContent) {
+      // === PDF UPLOAD: Text extracted, generate cards from it ===
+      setGenerating(true);
+      setGeneratingStatus("PDF text extracted. Generating flashcards...");
+      try {
+        const withIds = await generateFromContent(options.uploadedContent, setGeneratingStatus, { density: options.density });
+        await finalizeDeck(deckId, deck, withIds, { sourceType: "pdf-upload" });
+      } catch (e) {
+        console.error("PDF card generation failed:", e);
+        alert("Failed to generate cards: " + e.message + "\nYou can add cards manually.");
+        setMode("manage");
+      } finally {
+        setGenerating(false);
+        setTimeout(() => setGeneratingStatus(""), 3000);
+      }
+    } else if (options.topic) {
       // === TOPIC SEARCH: Firecrawl Search + Scrape → Generate ===
       setGenerating(true);
       setGeneratingStatus("Searching the web for the best sources...");
@@ -337,7 +539,7 @@ export default function App() {
           throw new Error("Could not find enough content on this topic. Try a more specific query.");
         }
         setGeneratingStatus(`Found ${sources.length} sources (${Math.round(content.length / 1000)}k chars). Generating flashcards...`);
-        const withIds = await generateFromContent(content, setGeneratingStatus);
+        const withIds = await generateFromContent(content, setGeneratingStatus, { density: options.density });
         await finalizeDeck(deckId, deck, withIds, { sourceType: "topic", topic: options.topic, sources });
       } catch (e) {
         console.error("Topic search failed:", e);
@@ -368,7 +570,7 @@ export default function App() {
           throw new Error("Could not extract enough content from this site.");
         }
         setGeneratingStatus(`Crawled ${result.pageCount} pages (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
-        const withIds = await generateFromContent(result.content, setGeneratingStatus);
+        const withIds = await generateFromContent(result.content, setGeneratingStatus, { density: options.density });
         await finalizeDeck(deckId, deck, withIds, { sourceType: "crawl", docUrl, sources: result.sources, pageCount: result.pageCount });
       } catch (e) {
         console.error("Site crawl failed:", e);
@@ -406,7 +608,7 @@ export default function App() {
           throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
         }
         setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
-        const withIds = await generateFromContent(result.content, setGeneratingStatus);
+        const withIds = await generateFromContent(result.content, setGeneratingStatus, { density: options.density });
         await finalizeDeck(deckId, deck, withIds, extraMeta);
       } catch (e) {
         console.error("Failed to generate cards:", e);
@@ -422,6 +624,7 @@ export default function App() {
   }
 
   async function handleDeleteDeck(deckId) {
+    trackEvent("Deck Deleted");
     await apiDeleteDeck(deckId);
     const remaining = decks.filter(d => d.id !== deckId);
     setDecks(remaining);
@@ -452,51 +655,104 @@ export default function App() {
     }
 
     setActiveDeckId(deckId);
-    setCards([]);
-    setProgress({});
+
+    // Check in-memory cache first (avoids re-downloading 500KB)
+    const cached = deckCacheRef.current.get(deckId);
+    if (cached && (Date.now() - cached.at) < 5 * 60 * 1000) {
+      setCards(ensureCardIds(cached.cards));
+      // Still load fresh progress from Firestore (fast, small)
+      fsGetProgress(user.id, deckId).then(p => { if (p) setProgress(p); }).catch(() => {});
+      if (switchMode) setMode("study");
+      return;
+    }
 
     // Load the selected deck's full cards from server
     try {
+      // Load progress from Firestore directly (instant)
+      fsGetProgress(user.id, deckId).then(p => { if (p) setProgress(p); }).catch(() => {});
+
       const { deck: fullDeck } = await loadDeck(deckId);
       if (fullDeck?.cards?.length > 0) {
         setCards(ensureCardIds(fullDeck.cards));
-        setProgress(fullDeck.progress || {});
+        deckCacheRef.current.set(deckId, { cards: fullDeck.cards, at: Date.now() });
+        if (fullDeck.progress) setProgress(fullDeck.progress);
+      } else {
+        // Deck exists but no cards yet (blob propagation delay) — retry once after 2s
+        setCards([]);
+        setProgress({});
+        setTimeout(async () => {
+          try {
+            const { deck: retry } = await loadDeck(deckId);
+            if (retry?.cards?.length > 0) {
+              setCards(ensureCardIds(retry.cards));
+              setProgress(retry.progress || {});
+            }
+          } catch {}
+        }, 2000);
       }
     } catch {
-      console.log("Failed to load deck cards");
+      console.log("Failed to load deck cards — will retry");
+      setCards([]);
+      setProgress({});
+      // Retry after delay for blob propagation
+      setTimeout(async () => {
+        try {
+          const { deck: retry } = await loadDeck(deckId);
+          if (retry?.cards?.length > 0) {
+            setCards(ensureCardIds(retry.cards));
+            setProgress(retry.progress || {});
+          }
+        } catch {}
+      }, 3000);
     }
 
-    if (switchMode) setMode("flip");
+    if (switchMode) setMode("study");
     setActiveCategory("All");
     setSearchQuery("");
   }
 
-  // Auto-save active deck when cards/progress change
+  // Auto-save progress separately (lightweight, no full deck resave)
+  const lastProgressSave = useRef(null);
   useEffect(() => {
-    if (!activeDeckId || !user || cards.length === 0) return;
+    if (!activeDeckId || !user || Object.keys(progress).length === 0) return;
+    const progressStr = JSON.stringify(progress);
+    if (progressStr === lastProgressSave.current) return;
     const timer = setTimeout(() => {
-      const currentDeck = decks.find(d => d.id === activeDeckId);
-      if (currentDeck) {
-        saveDeck(activeDeckId, {
-          ...currentDeck,
-          cards,
-          progress,
-          cardCount: cards.length,
-          lastStudied: new Date().toISOString(),
-        });
-        // Update local decks state
-        setDecks(prev => prev.map(d =>
-          d.id === activeDeckId ? { ...d, cardCount: cards.length, lastStudied: new Date().toISOString() } : d
-        ));
-      }
+      lastProgressSave.current = progressStr;
+      saveDeckProgress(activeDeckId, progress).catch(() => {
+        // Fall back to full deck save if v2 endpoint fails
+        const currentDeck = decks.find(d => d.id === activeDeckId);
+        if (currentDeck) {
+          saveDeck(activeDeckId, { ...currentDeck, cards, progress, cardCount: cards.length, lastStudied: new Date().toISOString() });
+        }
+      });
+      setDecks(prev => prev.map(d =>
+        d.id === activeDeckId ? { ...d, lastStudied: new Date().toISOString() } : d
+      ));
     }, 3000);
     return () => clearTimeout(timer);
-  }, [cards, progress, activeDeckId]);
+  }, [progress, activeDeckId]);
+
+  // Auto-save cards when they change (less frequent — only on card add/edit/delete)
+  const lastCardsSave = useRef(null);
+  useEffect(() => {
+    if (!activeDeckId || !user || cards.length === 0) return;
+    const cardsLen = cards.length;
+    if (cardsLen === lastCardsSave.current) return;
+    const timer = setTimeout(() => {
+      lastCardsSave.current = cardsLen;
+      const currentDeck = decks.find(d => d.id === activeDeckId);
+      if (currentDeck) {
+        saveDeck(activeDeckId, { ...currentDeck, cards, progress, cardCount: cardsLen, lastStudied: new Date().toISOString() });
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [cards.length, activeDeckId]);
 
   const activeDeck = decks.find(d => d.id === activeDeckId);
 
   const filteredCards = useMemo(() => {
-    let result = cards;
+    let result = cards.filter((c) => c?.front && c?.back); // skip malformed cards
     if (activeCategory !== "All") {
       result = result.filter((c) => c.category === activeCategory);
     }
@@ -504,17 +760,19 @@ export default function App() {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (c) =>
-          c.front.toLowerCase().includes(q) ||
-          c.back.toLowerCase().includes(q)
+          (c.front || "").toLowerCase().includes(q) ||
+          (c.back || "").toLowerCase().includes(q)
       );
     }
     return result;
   }, [cards, activeCategory, searchQuery]);
 
   const categoryCounts = useMemo(() => {
-    const counts = { All: cards.length };
-    cards.forEach((c) => {
-      counts[c.category] = (counts[c.category] || 0) + 1;
+    const valid = cards.filter((c) => c?.front && c?.back);
+    const counts = { All: valid.length };
+    valid.forEach((c) => {
+      const cat = c.category || "General";
+      counts[cat] = (counts[cat] || 0) + 1;
     });
     return counts;
   }, [cards]);
@@ -574,6 +832,24 @@ export default function App() {
     }, 1000);
   }
 
+  function handleSuspendCard(card) {
+    const key = card.front?.slice(0, 60);
+    setProgress(prev => ({
+      ...prev,
+      [key]: { ...prev[key], suspended: true },
+    }));
+    saveDeckProgress(activeDeckId, { ...progress, [key]: { ...progress[key], suspended: true } }).catch(() => {});
+  }
+
+  function handleUnsuspendCard(card) {
+    const key = card.front?.slice(0, 60);
+    setProgress(prev => {
+      const updated = { ...prev[key] };
+      delete updated.suspended;
+      return { ...prev, [key]: updated };
+    });
+  }
+
   function handleUpdateProgress(key, value) {
     setProgress((prev) => {
       const updated = { ...prev, [key]: value };
@@ -595,6 +871,8 @@ export default function App() {
           c.id === card.id ? { ...c, front: result.front, back: result.back } : c
         );
         setCards(updated);
+        // Invalidate deck cache so switching away and back shows the update
+        deckCacheRef.current.delete(activeDeckId);
         // Save to deck
         saveToDeck(updated).catch(() => {});
         return true;
@@ -656,7 +934,9 @@ export default function App() {
   const ONBOARDING_DECK_ID = "117269723779356752591-deck-onboarding";
   const subscribingRef = useRef(false);
   useEffect(() => {
-    if (decks.length === 0 && !loading && user?.id && !autoSeeding && !hasEverLoadedDecks && !subscribingRef.current) {
+    // Only auto-subscribe truly new users — check localStorage flag
+    const everHadDecks = localStorage.getItem("bc-has-had-decks");
+    if (decks.length === 0 && !loading && user?.id && !autoSeeding && !hasEverLoadedDecks && !subscribingRef.current && !everHadDecks) {
       subscribingRef.current = true;
       setAutoSeeding(true);
       (async () => {
@@ -664,7 +944,7 @@ export default function App() {
           if (user?.id) setUserId(user.id);
           if (accessToken) setAuthToken(accessToken);
           // Subscribe to the public onboarding deck — no cloning, no seed function
-          trackEvent("Signup", { method: "google" });
+          trackEvent("New User Onboarded");
           await subscribeToDeck(ONBOARDING_DECK_ID);
           const { decks: refreshed } = await loadDecks();
           if (refreshed?.length > 0) {
@@ -690,23 +970,169 @@ export default function App() {
     }
   }, [decks.length, loading, user?.id]);
 
-  // Static pages (accessible regardless of auth)
-  if (page === "privacy") {
-    return <PrivacyPolicy dark={dark} onBack={() => setPage(null)} />;
-  }
-  if (page === "terms") {
-    return <TermsOfService dark={dark} onBack={() => setPage(null)} />;
-  }
-  if (page === "contact") {
-    return <ContactPage dark={dark} onBack={() => setPage(null)} />;
-  }
-  if (page === "about") {
-    return <AboutPage dark={dark} onBack={() => setPage(null)} />;
+  // Onboarding completion handler
+  async function handleOnboardingComplete(profile) {
+    await saveProfile(profile);
+    setUserProfile(profile);
+    setShowOnboarding(false);
+    // Reload decks after onboarding (user may have subscribed to community decks)
+    try {
+      const { decks: refreshed } = await loadDecks();
+      if (refreshed?.length > 0) {
+        setDecks(refreshed);
+        setHasEverLoadedDecks(true);
+        localStorage.setItem("bc-has-had-decks", "true");
+        const firstId = refreshed[0].id;
+        setActiveDeckId(firstId);
+        const { deck: fullDeck } = await loadDeck(firstId);
+        if (fullDeck?.cards?.length > 0) {
+          setCards(ensureCardIds(fullDeck.cards));
+          setProgress(fullDeck.progress || {});
+        }
+      }
+    } catch (e) {
+      console.error("Post-onboarding deck load failed:", e);
+    }
   }
 
-  // Not logged in — show landing page
+  // --- DeckLibrary handlers (extracted from inline callbacks) ---
+
+  async function handleRefreshDecks() {
+    try {
+      const { decks: fresh } = await loadDecks();
+      if (fresh?.length > 0) setDecks(fresh);
+    } catch {}
+  }
+
+  async function handleGenerateFromDoc(deckId, docUrl) {
+    setGenerating(true);
+    setGeneratingStatus("Scraping document with Firecrawl...");
+    try {
+      const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
+      if (!result.content || result.content.trim().length < 50) {
+        throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
+      }
+      setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
+      const withIds = await generateFromContent(result.content, setGeneratingStatus);
+      const deck = decks.find(d => d.id === deckId);
+      await finalizeDeck(deckId, deck, withIds, { docUrl });
+      setActiveDeckId(deckId);
+      setProgress({});
+      setMode("study");
+    } catch (e) {
+      alert("Failed to generate cards: " + e.message);
+    } finally {
+      setGenerating(false);
+      setTimeout(() => setGeneratingStatus(""), 3000);
+    }
+  }
+
+  async function handleRegenerate() {
+    const deck = decks.find(d => d.id === activeDeckId);
+    const docUrl = deck?.docUrl;
+    if (!docUrl) {
+      alert("No document URL linked to this deck.");
+      return;
+    }
+    setGenerating(true);
+    setGeneratingStatus("Scraping document for regeneration...");
+    try {
+      const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
+      if (!result.content || result.content.trim().length < 50) {
+        throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
+      }
+      setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Regenerating flashcards...`);
+      const withIds = await generateFromContent(result.content, setGeneratingStatus);
+      const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, progress: {} };
+      await saveDeck(activeDeckId, updatedDeck);
+      setDecks(prev => prev.map(d => d.id === activeDeckId ? { id: activeDeckId, ...updatedDeck } : d));
+      setCards(withIds);
+      setProgress({});
+      setGeneratingStatus(`Done! Regenerated ${withIds.length} cards.`);
+      if (withIds.length > 0) precacheFirstPodcast(withIds[0]);
+    } catch (e) {
+      console.error("Regen failed:", e);
+      alert("Failed to regenerate cards: " + e.message);
+    } finally {
+      setGenerating(false);
+      setTimeout(() => setGeneratingStatus(""), 3000);
+    }
+  }
+
+  async function handleSaveDeckGroups(groups) {
+    setDeckGroups(groups);
+    try { await saveDeckGroups(groups); } catch (e) { console.error("Save groups failed:", e); }
+  }
+
+  async function handleAssignDeckGroup(deckId, groupId) {
+    setDecks(prev => prev.map(d => d.id === deckId ? { ...d, group: groupId } : d));
+    try { await assignDeckGroup(deckId, groupId); } catch (e) { console.error("Assign group failed:", e); }
+  }
+
+  async function handleStudyGroup(testId) {
+    const plan = studyPlan;
+    if (!plan?.tests) return;
+    const test = plan.tests.find(t => t.id === testId);
+    if (!test?.deckIds?.length) return;
+    let allGroupCards = [];
+    for (const dkId of test.deckIds) {
+      const existing = decks.find(d => d.id === dkId);
+      if (existing?.cards?.length) {
+        allGroupCards = allGroupCards.concat(existing.cards);
+      } else {
+        try {
+          const { deck: fullDeck } = await loadDeck(dkId);
+          if (fullDeck?.cards?.length) {
+            allGroupCards = allGroupCards.concat(fullDeck.cards);
+          }
+        } catch {
+          console.log("Failed to load deck", dkId);
+        }
+      }
+    }
+    if (allGroupCards.length === 0) return;
+    const withIds = ensureCardIds(allGroupCards);
+    setCards(withIds);
+    setActiveDeckId(test.deckIds[0]);
+    setMode("study");
+  }
+
+  // Static pages (accessible regardless of auth)
+  if (page === "privacy") {
+    return <Suspense fallback={<LazyFallback />}><PrivacyPolicy dark={dark} onBack={() => setPage(null)} /></Suspense>;
+  }
+  if (page === "terms") {
+    return <Suspense fallback={<LazyFallback />}><TermsOfService dark={dark} onBack={() => setPage(null)} /></Suspense>;
+  }
+  if (page === "contact") {
+    return <Suspense fallback={<LazyFallback />}><ContactPage dark={dark} onBack={() => setPage(null)} /></Suspense>;
+  }
+  if (page === "about") {
+    return <Suspense fallback={<LazyFallback />}><AboutPage dark={dark} onBack={() => setPage(null)} /></Suspense>;
+  }
+
+  // Auth still loading — show brief splash
+  if (!authReady && !user) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${dark ? "bg-gray-950" : "bg-gradient-to-br from-indigo-50 via-white to-purple-50"}`}>
+        <div className="text-center">
+          <i className="fa-solid fa-bolt text-indigo-500 text-4xl mb-3 block animate-pulse" />
+          <p className={`text-lg font-semibold ${dark ? "text-white" : "text-gray-900"}`}>BetterCram</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in — show landing page (?v1 param for old version)
   if (!user) {
-    return <LandingPage onLogin={login} dark={dark} setDark={setDark} setPage={setPage} />;
+    const isV1 = typeof window !== "undefined" && window.location.search.includes("v1");
+    const LandingComponent = isV1 ? LandingPage : LandingPageV2;
+    return <Suspense fallback={<LazyFallback />}><LandingComponent onLogin={login} onLoginWithEmail={loginWithEmail} emailSent={emailSent} dark={dark} setDark={setDark} setPage={setPage} otpStep={otpStep} otpEmail={otpEmail} otpError={otpError} sendOTP={sendOTP} verifyOTP={verifyOTP} setOtpStep={setOtpStep} /></Suspense>;
+  }
+
+  // Show onboarding for new users (after profile has loaded)
+  if (profileLoaded && showOnboarding) {
+    return <Suspense fallback={<LazyFallback />}><Onboarding user={user} onComplete={handleOnboardingComplete} /></Suspense>;
   }
 
   // Show loading screen while: initial load, auto-seeding, or about to auto-seed
@@ -739,242 +1165,51 @@ export default function App() {
   // Show setup screen only when explicitly triggered (e.g. regenerate)
   if (showSetup) {
     return (
-      <SetupScreen
-        onCardsGenerated={handleCardsGenerated}
-        onSkip={() => setShowSetup(false)}
-        existingCards={cards.length > 0 ? cards : null}
-        dark={dark}
-        setDark={setDark}
-        initialUrl={activeDeck?.docUrl || ""}
-      />
+      <Suspense fallback={<LazyFallback />}>
+        <SetupScreen
+          onCardsGenerated={handleCardsGenerated}
+          onSkip={() => setShowSetup(false)}
+          existingCards={cards.length > 0 ? cards : null}
+          dark={dark}
+          setDark={setDark}
+          initialUrl={activeDeck?.docUrl || ""}
+        />
+      </Suspense>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 transition-colors">
-      {/* Header */}
-      <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div
-            onClick={() => { setMode("flip"); setShowPricing(false); window.scrollTo(0, 0); }}
-            className="cursor-pointer hover:opacity-80 transition-opacity min-w-0"
-          >
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-              <i className="fa-solid fa-bolt text-indigo-600 dark:text-indigo-400 mr-2" />
-              BetterCram
-            </h1>
-            {activeDeck && mode !== "library" && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 truncate pl-7">
-                {activeDeck.name}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Search toggle */}
-            <button
-              onClick={() => setShowSearch(!showSearch)}
-              className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                showSearch
-                  ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-              }`}
-            >
-              <i className="fa-solid fa-magnifying-glass" />
-            </button>
-            {/* Dark mode and notifications moved to user menu */}
-            {/* User menu */}
-            {user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center gap-1.5 rounded-full hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-600 transition-all"
-                >
-                  {user.picture ? (
-                    <img
-                      src={user.picture}
-                      alt=""
-                      className="w-9 h-9 rounded-full object-cover flex-shrink-0 border-2 border-indigo-300 dark:border-indigo-600"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-300">
-                      <i className="fa-solid fa-user text-sm" />
-                    </div>
-                  )}
-                </button>
+      <AppHeader
+        user={user}
+        activeDeck={activeDeck}
+        mode={mode}
+        cards={cards}
+        dark={dark}
+        setDark={setDark}
+        showSearch={showSearch}
+        setShowSearch={setShowSearch}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        filteredCards={filteredCards}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        setNotifications={setNotifications}
+        subscription={subscription}
+        decks={decks}
+        setMode={setMode}
+        setShowPricing={setShowPricing}
+        setShowMenu={setShowMenu}
+        showMenu={showMenu}
+        setShowSettings={setShowSettings}
+        setShowNotificationSettings={setShowNotificationSettings}
+        setShowDeleteAccountModal={setShowDeleteAccountModal}
+        login={login}
+        logout={logout}
+      />
 
-                {/* Dropdown menu */}
-                {showMenu && (
-                  <>
-                    {/* Backdrop to close menu */}
-                    <div
-                      className="fixed inset-0 z-20"
-                      onClick={() => setShowMenu(false)}
-                    />
-                    <div className="absolute right-0 top-12 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 z-30 py-2 overflow-hidden">
-                      {/* User info */}
-                      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {user.name || user.email}
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                          {cards.length} cards
-                          {subscription?.active && (
-                            <span className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 rounded text-[10px] font-medium">
-                              {subscription.plan === "pro" ? "PRO" : "STARTER"}
-                              {subscription.source === "whitelist" && " ✦"}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-
-                      {/* Study tools */}
-                      <div className="px-3 pt-2 pb-1">
-                        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Tools</p>
-                      </div>
-
-                      <button
-                        onClick={() => { setShowMenu(false); setMode("library"); setShowPricing(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-book-open-reader w-4 text-center text-indigo-500" />
-                        Deck Library
-                        <span className="ml-auto text-[10px] text-gray-400">{decks.length}</span>
-                      </button>
-
-                      <button
-                        onClick={() => { setShowMenu(false); setMode("planner"); setShowPricing(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-calendar-check w-4 text-center text-orange-500" />
-                        Study Plan
-                      </button>
-
-                      <button
-                        onClick={() => { setShowMenu(false); setShowNotificationSettings(true); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-bell w-4 text-center text-amber-500" />
-                        Notifications
-                      </button>
-
-                      <button
-                        onClick={() => { setDark(!dark); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                      >
-                        <i className={`fa-solid ${dark ? "fa-sun" : "fa-moon"} w-4 text-center text-sky-500`} />
-                        {dark ? "Light Mode" : "Dark Mode"}
-                      </button>
-
-                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
-
-                      {/* Account */}
-                      <div className="px-3 pt-2 pb-1">
-                        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Account</p>
-                      </div>
-
-                      <button
-                        onClick={() => { setShowMenu(false); setShowPricing(true); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-crown w-4 text-center text-yellow-500" />
-                        {subscription?.active ? "My Plan" : "Upgrade to Pro"}
-                        {subscription?.active && (
-                          <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 rounded">
-                            {subscription.plan === "pro" ? "PRO" : "STARTER"}
-                          </span>
-                        )}
-                      </button>
-
-                      {subscription?.active && subscription?.source !== "whitelist" && (
-                        <button
-                          onClick={async () => {
-                            setShowMenu(false);
-                            try {
-                              const { url } = await manageSubscription(user.email);
-                              window.location.href = url;
-                            } catch (err) {
-                              // No Stripe customer yet — show pricing to subscribe
-                              setShowPricing(true);
-                            }
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3"
-                        >
-                          <i className="fa-solid fa-credit-card w-4 text-center text-purple-500" />
-                          Manage Subscription
-                        </button>
-                      )}
-
-                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
-
-                      <button
-                        onClick={() => {
-                          setShowMenu(false);
-                          logout();
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-right-from-bracket w-4 text-center" />
-                        Sign out
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setShowMenu(false);
-                          setShowDeleteAccountModal(true);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-400 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3"
-                      >
-                        <i className="fa-solid fa-trash w-4 text-center" />
-                        Delete account
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={login}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-              >
-                <i className="fa-brands fa-google text-sm" />
-                <span className="hidden sm:inline">Sign in</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Search bar */}
-        {showSearch && (
-          <div className="max-w-4xl mx-auto px-4 pb-3">
-            <div className="relative">
-              <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search cards..."
-                autoFocus
-                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg pl-10 pr-10 py-2 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                >
-                  <i className="fa-solid fa-xmark" />
-                </button>
-              )}
-            </div>
-            {searchQuery && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                {filteredCards.length} cards match "{searchQuery}"
-              </p>
-            )}
-          </div>
-        )}
-      </header>
-
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <Suspense fallback={<LazyFallback />}>
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6">
         {/* Mode tabs */}
         {showPricing ? (
           <PricingPage
@@ -988,32 +1223,39 @@ export default function App() {
           />
         ) : (
         <>
-        <div className="relative">
-          <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none sm:hidden" />
-          <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none sm:hidden" />
-          <div className="flex gap-1.5 sm:flex-wrap sm:justify-center overflow-x-auto hide-scrollbar px-1 pb-1" style={{ WebkitOverflowScrolling: "touch" }}>
-            {MODES.map((m) => {
-              const locked = PRO_MODES.includes(m.id) && !isPro;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => handleModeChange(m.id)}
-                  className={`min-w-[44px] min-h-[44px] shrink-0 px-3 py-2 sm:px-4 sm:py-2 rounded-xl font-medium text-sm transition-colors whitespace-nowrap flex items-center justify-center gap-1.5 ${
-                    mode === m.id
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : locked
-                      ? "bg-gray-100 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700"
-                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
-                  }`}
-                >
-                  <i className={`${m.icon} text-lg sm:text-sm`} />
-                  <span className="hidden sm:inline">{m.label}</span>
-                  {locked && <i className="fa-solid fa-lock text-[10px] ml-0.5" />}
-                </button>
-              );
-            })}
-          </div>
+        {/* Desktop tab bar — hidden on mobile (shown in bottom nav instead) */}
+        <div className="hidden sm:flex gap-2 justify-center">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center gap-2 ${
+                activeTab === tab.id
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
+              }`}
+            >
+              <i className={`${tab.icon}`} />
+              {tab.label}
+            </button>
+          ))}
         </div>
+
+        {/* Sub-navigation within active tab */}
+        {!["library", "flip", "manage", "planner"].includes(mode) && (() => {
+          const currentTab = TABS.find(t => t.id === activeTab);
+          if (!currentTab || currentTab.subModes.length <= 1) return null;
+          return (
+            <div className="flex justify-center">
+              <SubNav
+                items={currentTab.subModes}
+                active={mode}
+                onChange={handleSubModeChange}
+                isPro={isPro}
+              />
+            </div>
+          );
+        })()}
 
         {/* Category filter — only in study modes, not library/manage/planner */}
         {!["library", "manage", "planner"].includes(mode) && !showPricing && (
@@ -1040,6 +1282,15 @@ export default function App() {
           </div>
         )}
 
+        {/* Settings page (replaces mode content when open) */}
+        {showSettings ? (
+          <Settings
+            user={user}
+            profile={userProfile}
+            onBack={() => setShowSettings(false)}
+            onProfileUpdate={(updated) => setUserProfile(updated)}
+          />
+        ) : <ErrorBoundary>
         {/* Active mode */}
         {mode === "library" && (
           <DeckLibrary
@@ -1049,142 +1300,20 @@ export default function App() {
             onSelectDeck={handleSelectDeck}
             onCreateDeck={handleCreateDeck}
             onDeleteDeck={handleDeleteDeck}
+            onAddDeckOptimistic={(deck) => setDecks(prev => [...prev, deck])}
+            onRefreshDecks={handleRefreshDecks}
             generating={generating}
             generatingStatus={generatingStatus}
-            onGenerateFromDoc={async (deckId, docUrl) => {
-              setGenerating(true);
-              setGeneratingStatus("Scraping document with Firecrawl...");
-              try {
-                const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
-                if (!result.content || result.content.trim().length < 50) {
-                  throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
-                }
-                setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Generating flashcards...`);
-                const chunkSize = 8000;
-                const chunks = [];
-                for (let i = 0; i < result.content.length; i += chunkSize) {
-                  chunks.push(result.content.slice(i, i + chunkSize));
-                }
-                let allCards = [];
-                const PARALLEL = 5;
-                const totalBatches = Math.ceil(chunks.length / PARALLEL);
-                for (let i = 0; i < chunks.length; i += PARALLEL) {
-                  const batchNum = Math.floor(i / PARALLEL) + 1;
-                  setGeneratingStatus(`Generating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
-                  const batch = chunks.slice(i, i + PARALLEL);
-                  const results = await Promise.all(
-                    batch.map(chunk => generateCards(chunk, null))
-                  );
-                  for (const { cards: c } of results) {
-                    allCards = allCards.concat(c);
-                  }
-                }
-                const withIds = ensureCardIds(allCards);
-                setGeneratingStatus(`Done! ${withIds.length} cards generated.`);
-                const deck = decks.find(d => d.id === deckId);
-                const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, docUrl };
-                await saveDeck(deckId, updatedDeck);
-                setDecks(prev => prev.map(d => d.id === deckId ? { id: deckId, ...updatedDeck } : d));
-                setActiveDeckId(deckId);
-                setCards(withIds);
-                setProgress({});
-                setMode("flip");
-                if (withIds.length > 0) precacheFirstPodcast(withIds[0]);
-              } catch (e) {
-                alert("Failed to generate cards: " + e.message);
-              } finally {
-                setGenerating(false);
-                setTimeout(() => setGeneratingStatus(""), 3000);
-              }
-            }}
-            onRefreshDecks={async () => {
-              try {
-                const { decks: fresh } = await loadDecks();
-                if (fresh) setDecks(fresh);
-              } catch {}
-            }}
-            onRegenerate={async () => {
-              const deck = decks.find(d => d.id === activeDeckId);
-              const docUrl = deck?.docUrl;
-              if (!docUrl) {
-                alert("No document URL linked to this deck.");
-                return;
-              }
-              setGenerating(true);
-              setGeneratingStatus("Scraping document for regeneration...");
-              try {
-                const result = await scrapeDocument(docUrl, (msg) => setGeneratingStatus(msg));
-                if (!result.content || result.content.trim().length < 50) {
-                  throw new Error("Could not extract enough content. Make sure the doc is shared publicly.");
-                }
-                setGeneratingStatus(`Document scraped (${Math.round(result.content.length / 1000)}k chars). Regenerating flashcards...`);
-                const chunkSize = 8000;
-                const chunks = [];
-                for (let i = 0; i < result.content.length; i += chunkSize) {
-                  chunks.push(result.content.slice(i, i + chunkSize));
-                }
-                let allCards = [];
-                const PARALLEL = 5;
-                const totalBatches = Math.ceil(chunks.length / PARALLEL);
-                for (let i = 0; i < chunks.length; i += PARALLEL) {
-                  const batchNum = Math.floor(i / PARALLEL) + 1;
-                  setGeneratingStatus(`Regenerating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
-                  const batch = chunks.slice(i, i + PARALLEL);
-                  const results = await Promise.all(
-                    batch.map(chunk => generateCards(chunk, null))
-                  );
-                  for (const { cards: c } of results) {
-                    allCards = allCards.concat(c);
-                  }
-                }
-                const withIds = ensureCardIds(allCards);
-                const updatedDeck = { ...deck, cards: withIds, cardCount: withIds.length, progress: {} };
-                await saveDeck(activeDeckId, updatedDeck);
-                setDecks(prev => prev.map(d => d.id === activeDeckId ? { id: activeDeckId, ...updatedDeck } : d));
-                setCards(withIds);
-                setProgress({});
-                setGeneratingStatus(`Done! Regenerated ${withIds.length} cards.`);
-                if (withIds.length > 0) precacheFirstPodcast(withIds[0]);
-              } catch (e) {
-                console.error("Regen failed:", e);
-                alert("Failed to regenerate cards: " + e.message);
-              } finally {
-                setGenerating(false);
-                setTimeout(() => setGeneratingStatus(""), 3000);
-              }
-            }}
+            onGenerateFromDoc={handleGenerateFromDoc}
+            onRegenerate={handleRegenerate}
             onAddMore={handleGenerateMore}
             onManageCards={() => setMode("manage")}
             onShowPlanner={() => setMode("planner")}
             studyPlan={studyPlan}
-            onStudyGroup={async (testId) => {
-              const plan = studyPlan;
-              if (!plan?.tests) return;
-              const test = plan.tests.find(t => t.id === testId);
-              if (!test?.deckIds?.length) return;
-              // Load cards from all decks in the group
-              let allCards = [];
-              for (const deckId of test.deckIds) {
-                const existing = decks.find(d => d.id === deckId);
-                if (existing?.cards?.length) {
-                  allCards = allCards.concat(existing.cards);
-                } else {
-                  try {
-                    const { deck: fullDeck } = await loadDeck(deckId);
-                    if (fullDeck?.cards?.length) {
-                      allCards = allCards.concat(fullDeck.cards);
-                    }
-                  } catch {
-                    console.log("Failed to load deck", deckId);
-                  }
-                }
-              }
-              if (allCards.length === 0) return;
-              const withIds = ensureCardIds(allCards);
-              setCards(withIds);
-              setActiveDeckId(test.deckIds[0]);
-              setMode("flip");
-            }}
+            deckGroups={deckGroups}
+            onSaveDeckGroups={handleSaveDeckGroups}
+            onAssignDeckGroup={handleAssignDeckGroup}
+            onStudyGroup={handleStudyGroup}
           />
         )}
         {mode === "flip" && <FlipMode cards={filteredCards} onRegenCard={handleRegenCard} />}
@@ -1193,13 +1322,17 @@ export default function App() {
             cards={filteredCards}
             progress={progress}
             onUpdateProgress={handleUpdateProgress}
+            onSessionStatsChange={setStudySessionStats}
+            deckId={activeDeckId}
+            onRegenCard={handleRegenCard}
+            onSuspendCard={handleSuspendCard}
           />
         )}
-        {mode === "quiz" && <QuizMode cards={filteredCards} />}
+        {mode === "quiz" && <QuizMode cards={filteredCards} progress={progress} />}
         {mode === "tutor" && <TutorMode cards={filteredCards} deckName={activeDeck?.name} />}
         {mode === "deepdive" && <DeepDiveMode cards={filteredCards} deckName={activeDeck?.name} />}
         {mode === "audio" && <AudioMode cards={filteredCards} />}
-        {mode === "voice" && <VoiceTutorMode cards={filteredCards} deckName={activeDeck?.name} />}
+        {mode === "voice" && <VoiceTutorMode cards={filteredCards} deckName={activeDeck?.name} progress={progress} sessionStats={studySessionStats} activeCategory={activeCategory} />}
         {mode === "manage" && (
           <CardManager
             cards={filteredCards}
@@ -1208,6 +1341,8 @@ export default function App() {
             onAddCard={handleAddCard}
             onEditCard={handleEditCard}
             onDeleteCard={handleDeleteCard}
+            isReference={activeDeck?.isReference}
+            subscribedTo={activeDeck?.subscribedTo}
           />
         )}
         {mode === "planner" && (
@@ -1226,6 +1361,7 @@ export default function App() {
             activeDeckId={activeDeckId}
           />
         )}
+        </ErrorBoundary>}
         </>
         )}
       </div>
@@ -1238,46 +1374,17 @@ export default function App() {
         open={showNotificationSettings}
         onClose={() => setShowNotificationSettings(false)}
       />
+      </Suspense>
 
       {/* Delete Account Modal */}
       {showDeleteAccountModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteAccountModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-4">
-              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i className="fa-solid fa-triangle-exclamation text-2xl text-red-600 dark:text-red-400" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete your account?</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                This will permanently delete <strong>all your data</strong> — decks, cards, progress, and study plans. This action cannot be undone.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteAccountModal(false)}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  setShowDeleteAccountModal(false);
-                  try {
-                    await resetAccount();
-                    localStorage.clear();
-                    logout();
-                  } catch (err) {
-                    alert("Failed to delete account: " + err.message);
-                  }
-                }}
-                className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 transition-all"
-              >
-                Yes, delete everything
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteAccountModal
+          onClose={() => setShowDeleteAccountModal(false)}
+          logout={logout}
+        />
       )}
+
+      <MobileNav tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} />
     </div>
   );
 }

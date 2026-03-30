@@ -77,7 +77,7 @@ export default function SetupScreen({ onCardsGenerated, onSkip, existingCards, d
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4 transition-colors">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-md md:max-w-lg space-y-6">
         {/* Dark mode toggle */}
         <div className="flex justify-end">
           <button

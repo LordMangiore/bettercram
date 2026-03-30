@@ -72,6 +72,7 @@ export default async (req) => {
         url,
         formats: ["markdown"],
         timeout: firecrawlTimeout,
+        waitFor: 3000,
       }),
     });
 

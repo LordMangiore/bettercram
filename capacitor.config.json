@@ -1,0 +1,31 @@
+{
+  "appId": "com.bettercram.app",
+  "appName": "BetterCram",
+  "webDir": "dist",
+  "server": {
+    "url": "https://bettercram.com",
+    "cleartext": false,
+    "allowNavigation": ["bettercram.firebaseapp.com", "accounts.google.com", "*.google.com", "*.firebaseapp.com"]
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "allowsLinkPreview": false,
+    "scheme": "BetterCram",
+    "preferredContentMode": "mobile"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 2000,
+      "backgroundColor": "#030712",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#030712"
+    }
+  }
+}

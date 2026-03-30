@@ -1,0 +1,290 @@
+[
+  {
+    "front": "Lowercase alpha",
+    "back": "\\(\\alpha\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Alpha",
+    "back": "\\(A\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Beta",
+    "back": "\\(B\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase beta",
+    "back": "\\(\\beta\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase gamma",
+    "back": "\\(\\gamma\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Gamma",
+    "back": "\\(\\Gamma\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase delta",
+    "back": "\\(\\delta\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Delta",
+    "back": "\\(\\Delta\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Epsilon",
+    "back": "\\(E\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase epsilon",
+    "back": "\\(\\epsilon\\) or \\(\\varepsilon\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase zeta",
+    "back": "\\(\\zeta\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Zeta",
+    "back": "\\(Z\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase eta",
+    "back": "\\(\\eta\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Eta",
+    "back": "[$$]H[/$$]",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase theta",
+    "back": "\\(\\theta\\) or \\(\\vartheta\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Theta",
+    "back": "\\(\\Theta\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Kappa",
+    "back": "\\(K\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase kappa",
+    "back": "\\(\\kappa\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Lambda",
+    "back": "\\(\\Lambda\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase lambda",
+    "back": "\\(\\lambda\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Mu",
+    "back": "\\(M\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase mu",
+    "back": "\\(\\mu\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Nu",
+    "back": "\\(N\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase nu",
+    "back": "\\(\\nu\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Xi",
+    "back": "\\(\\Xi\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase xi",
+    "back": "\\(\\xi\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Omicron",
+    "back": "\\(O\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase omicron",
+    "back": "\\(o\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Pi",
+    "back": "\\(\\Pi\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase pi",
+    "back": "\\(\\pi\\) or \\(\\varpi\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Rho",
+    "back": "\\(P\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase rho",
+    "back": "\\(\\rho\\) or \\(\\varrho\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Sigma",
+    "back": "\\(\\Sigma\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase sigma",
+    "back": "\\(\\sigma\\) or \\(\\varsigma\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Tau",
+    "back": "\\(T\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase tau",
+    "back": "\\(\\tau\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Upsilon",
+    "back": "\\(\\Upsilon\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase upsilon",
+    "back": "\\(\\upsilon\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Phi",
+    "back": "\\(\\Phi\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase phi",
+    "back": "\\(\\phi\\) or \\(\\varphi\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Chi",
+    "back": "\\(X\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase chi",
+    "back": "\\(\\chi\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Psi",
+    "back": "\\(\\Psi\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase psi",
+    "back": "\\(\\psi\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Omega",
+    "back": "\\(\\Omega\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase omega",
+    "back": "\\(\\omega\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Uppercase Iota",
+    "back": "\\(I\\)",
+    "category": "Uppercase",
+    "difficulty": "easy"
+  },
+  {
+    "front": "Lowercase iota",
+    "back": "\\(\\iota\\)",
+    "category": "Lowercase",
+    "difficulty": "easy"
+  }
+]

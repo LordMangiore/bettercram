@@ -1,4 +1,5 @@
 import { useState } from "react";
+import DOMPurify from "dompurify";
 import { deepDive } from "../api";
 
 export default function DeepDiveMode({ cards, deckName }) {
@@ -148,7 +149,7 @@ export default function DeepDiveMode({ cards, deckName }) {
 }
 
 function formatMarkdown(text) {
-  return text
+  const html = text
     .replace(/## (.*)/g, '<h3 class="text-base font-semibold text-gray-900 dark:text-white mt-4 mb-2">$1</h3>')
     .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
     .replace(/\*(.*?)\*/g, "<em>$1</em>")
@@ -157,4 +158,5 @@ function formatMarkdown(text) {
     .replace(/^(\d+)\. (.*)/gm, '<li class="ml-4 list-decimal">$1. $2</li>')
     .replace(/\n\n/g, '<br/><br/>')
     .replace(/\n/g, '<br/>');
+  return DOMPurify.sanitize(html);
 }

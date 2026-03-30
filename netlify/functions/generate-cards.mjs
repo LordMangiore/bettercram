@@ -8,7 +8,7 @@ export default async (req) => {
   }
 
   try {
-    const { content, category, existingTopics } = await req.json();
+    const { content, category, existingTopics, density } = await req.json();
 
     if (!content || content.trim().length === 0) {
       return new Response(JSON.stringify({ error: "No content provided" }), {
@@ -16,6 +16,12 @@ export default async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    const densityInstruction = density === "concise"
+      ? "\nDENSITY: Focus only on the most important, high-yield concepts. Be selective — quality over quantity. Only create cards for key definitions, critical processes, and must-know facts.\n"
+      : density === "comprehensive"
+      ? "\nDENSITY: Extract everything worth studying. Be thorough — cover every definition, process, comparison, example, and application. Leave nothing out.\n"
+      : "";
 
     const systemPrompt = `You are an expert tutor creating flashcards from study material.
 Generate flashcards as a JSON array. Each flashcard should have:
@@ -61,7 +67,7 @@ Rules:
 - Handle special characters (musical notation, math symbols, etc.) naturally
 ${category ? `- Focus only on content related to: ${category}` : ""}
 ${existingTopics ? `- IMPORTANT: These topics have ALREADY been covered in other cards. Do NOT create cards about them: ${existingTopics}` : ""}
-
+${densityInstruction}
 Return ONLY a valid JSON array, no markdown fences, no other text. Start with [ and end with ].`;
 
     const message = await anthropic.messages.create({

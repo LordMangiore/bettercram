@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { deleteDoc, deleteCollection } from "./lib/firestore.mjs";
 
 export default async function handler(req) {
   if (req.method !== "POST") {
@@ -6,9 +7,18 @@ export default async function handler(req) {
   }
 
   try {
-    const userId = req.headers.get("x-user-id") || "default";
+    const userId = req.headers.get("x-user-id");
+    if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Clear all deck data for this user
+    // Delete all Firestore collections for this user
+    await Promise.all([
+      deleteCollection(`users/${userId}/decks`),
+      deleteCollection(`users/${userId}/progress`),
+      deleteCollection(`users/${userId}/reviewLogs`),
+      deleteDoc(`users/${userId}`),
+    ]);
+
+    // Clear all Blob data (backup cleanup)
     const deckStore = getStore(`decks-${userId}`);
     const { blobs } = await deckStore.list();
     for (const blob of blobs) {
@@ -22,6 +32,10 @@ export default async function handler(req) {
     // Clear study plan
     const planStore = getStore("study-plans");
     try { await planStore.delete(userId); } catch {}
+
+    // Clear study plan from flashcards store (legacy)
+    const flashcardsStore = getStore("flashcards");
+    try { await flashcardsStore.delete(`${userId}-study-plan`); } catch {}
 
     return Response.json({ ok: true, cleared: blobs.length, userId });
   } catch (err) {

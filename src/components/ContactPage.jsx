@@ -9,7 +9,7 @@ export default function ContactPage({ dark, onBack }) {
   const faqs = [
     {
       q: "How do I get started with BetterCram?",
-      a: "Simply click \"Sign in with Google\" on the homepage. You'll get a 7-day free trial with full access to all features, no credit card required. Once signed in, you can load a document or start studying with our sample decks.",
+      a: "Sign in with your email on the homepage. You'll get a 30-day free trial with full access to all features, no credit card required. Once signed in, you can load a document or start studying with our sample decks.",
     },
     {
       q: "What file types can I use to generate flashcards?",
@@ -37,7 +37,7 @@ export default function ContactPage({ dark, onBack }) {
     },
     {
       q: "What's included in the free trial?",
-      a: "The 7-day free trial gives you full access to all Pro features: AI tutor, voice tutoring with Nova, audio lessons, deep-dive research, unlimited decks, and the study planner. No credit card required to start.",
+      a: "The 30-day free trial gives you full access to all Pro features: AI tutor, voice tutoring with Nova, audio lessons, deep-dive research, unlimited decks, and the study planner. No credit card required to start.",
     },
   ];
 
