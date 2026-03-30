@@ -1,8 +1,9 @@
-import { useState, useMemo, useRef } from "react";
-import { publishDeck, browsePublicDecks, subscribeToDeck, cloneDeck, upvotePublicDeck, parseUploadedFile } from "../api";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { publishDeck, browsePublicDecks, subscribeToDeck, cloneDeck, upvotePublicDeck, parseUploadedFile, listSuggestions } from "../api";
 import { parseAnkiFile, uploadAnkiMedia, resolveCardMedia } from "../lib/ankiParser";
 import SuggestEditModal from "./SuggestEditModal";
 import SuggestionPanel from "./SuggestionPanel";
+import DeckCardMenu from "./deck-library/DeckCardMenu";
 
 const COLORS = [
   "from-indigo-500 to-purple-600",
@@ -50,7 +51,7 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, onAddDeckOptimistic, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, deckGroups = [], onSaveDeckGroups, onAssignDeckGroup, onStudyGroup }) {
+export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, onAddDeckOptimistic, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, deckGroups = [], onSaveDeckGroups, onAssignDeckGroup, onStudyGroup, onRenameDeck }) {
   const [showCreate, setShowCreate] = useState(false);
   const [suggestModal, setSuggestModal] = useState(null); // { publicDeckId, card?, type }
   const [suggestionPanel, setSuggestionPanel] = useState(null); // { publicDeckId, deckName }
@@ -75,6 +76,46 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
   const [confirmRegenDeckId, setConfirmRegenDeckId] = useState(null);
   const [confirmDeleteDeckId, setConfirmDeleteDeckId] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [renamingDeckId, setRenamingDeckId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [suggestionCounts, setSuggestionCounts] = useState({});
+  const renameInputRef = useRef(null);
+
+  // Fetch suggestion counts for published decks
+  useEffect(() => {
+    const publishedDecks = decks.filter(d => d.isPublic && !d.isReference);
+    if (publishedDecks.length === 0) return;
+    (async () => {
+      const counts = {};
+      for (const deck of publishedDecks) {
+        try {
+          const { suggestions } = await listSuggestions(deck.id, "pending");
+          if (suggestions?.length > 0) counts[deck.id] = suggestions.length;
+        } catch {}
+      }
+      setSuggestionCounts(counts);
+    })();
+  }, [decks]);
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingDeckId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingDeckId]);
+
+  function startRename(deck) {
+    setRenamingDeckId(deck.id);
+    setRenameValue(deck.name);
+  }
+
+  function saveRename() {
+    if (renameValue.trim() && renamingDeckId) {
+      onRenameDeck(renamingDeckId, renameValue.trim());
+    }
+    setRenamingDeckId(null);
+  }
 
   // Compute custom groups, test groups, and ungrouped decks
   const { customGroups, testGroups, ungroupedDecks } = useMemo(() => {
@@ -272,92 +313,80 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
     }
   }
 
-  // Renders a single deck card — reused for grouped and ungrouped
+  // Renders a single deck card — clean design with 3-dot menu
   function renderDeckCard(deck, colorIndex) {
+    const isActive = activeDeckId === deck.id;
+    const pendingSuggestions = suggestionCounts[deck.id] || 0;
+
+    function handleExport() {
+      const blob = new Blob([JSON.stringify({ name: deck.name, cards: deck.cards || [] }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${deck.name.replace(/[^a-z0-9]/gi, "_")}.json`; a.click();
+      URL.revokeObjectURL(url);
+    }
+
     return (
       <div
         key={deck.id}
-        onClick={() => onSelectDeck(deck.id, { switchMode: false })}
-        onDoubleClick={() => onSelectDeck(deck.id, { switchMode: true })}
-        className={`relative rounded-2xl overflow-hidden cursor-pointer hover:scale-[1.02] transition-all group ${
-          activeDeckId === deck.id ? "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900" : ""
+        onClick={() => onSelectDeck(deck.id)}
+        className={`relative rounded-2xl overflow-hidden cursor-pointer hover:scale-[1.02] transition-all ${
+          isActive ? "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900" : ""
         }`}
       >
-        {/* Gradient header */}
-        <div className={`bg-gradient-to-br ${getColor(colorIndex)} p-5 pb-8`}>
-          {/* Status badge */}
-          {(deck.isPublic || deck.isReference || deck.isClone) && (
-            <div className="mb-2">
-              {deck.isPublic && (
-                <span className="inline-flex items-center px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full">
-                  <i className="fa-solid fa-globe mr-1" />SHARED
-                </span>
-              )}
-              {deck.isReference && (
-                <span className="inline-flex items-center px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full">
-                  <i className="fa-solid fa-link mr-1" />SUBSCRIBED
-                </span>
-              )}
-              {deck.isClone && (
-                <span className="inline-flex items-center px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full">
-                  <i className="fa-solid fa-copy mr-1" />CLONED
-                </span>
+        {/* Gradient header — clean: name + 3-dot menu only */}
+        <div className={`bg-gradient-to-br ${getColor(colorIndex)} p-5`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              {renamingDeckId === deck.id ? (
+                <input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenamingDeckId(null); }}
+                  onBlur={saveRename}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full bg-white/20 text-white font-bold text-lg rounded-lg px-2 py-1 outline-none focus:bg-white/30 placeholder-white/50"
+                />
+              ) : (
+                <h3 className="text-lg font-bold text-white leading-tight">
+                  {deck.name}
+                </h3>
               )}
             </div>
-          )}
-          <div className="flex items-start justify-between">
-            <h3 className="text-lg font-bold text-white leading-tight pr-6">
-              {deck.name}
-            </h3>
-            <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
-              {(deck.cardCount || 0) > 0 && (
+            <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {/* Suggestion count badge */}
+              {pendingSuggestions > 0 && (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePublish(deck.id, deck.isPublic);
-                  }}
-                  disabled={publishing === deck.id}
-                  className={`w-7 h-7 flex items-center justify-center rounded-full text-xs transition-all ${
-                    deck.isPublic
-                      ? "bg-green-500/30 text-green-300 hover:bg-green-500/50"
-                      : "bg-black/20 text-white/80 hover:bg-black/40 hover:text-white"
-                  }`}
-                  title={deck.isPublic ? "Unpublish from community" : "Share with community"}
+                  onClick={() => setSuggestionPanel({ publicDeckId: `${user?.id}-${deck.id}`, deckName: deck.name })}
+                  className="w-7 h-7 flex items-center justify-center rounded-full bg-amber-500/30 text-amber-200 text-[10px] font-bold hover:bg-amber-500/50 transition-colors"
+                  title={`${pendingSuggestions} pending suggestions`}
                 >
-                  <i className={`fa-solid ${publishing === deck.id ? "fa-spinner fa-spin" : deck.isPublic ? "fa-globe" : "fa-share-nodes"}`} />
+                  {pendingSuggestions}
                 </button>
               )}
-              {deckGroups.length > 0 && (
-                <div className="relative" onClick={e => e.stopPropagation()}>
-                  <select
-                    value={deck.group || ""}
-                    onChange={e => onAssignDeckGroup?.(deck.id, e.target.value || null)}
-                    className="w-7 h-7 opacity-0 absolute inset-0 cursor-pointer z-10"
-                    title="Assign to group"
-                  >
-                    <option value="">No group</option>
-                    {deckGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                  <div className={`w-7 h-7 flex items-center justify-center rounded-full transition-all text-xs ${deck.group ? "bg-indigo-500/30 text-indigo-300" : "bg-black/20 text-white/80 hover:bg-black/40"}`}>
-                    <i className="fa-solid fa-folder" />
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmDeleteDeckId(deck.id);
-                }}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-black/20 text-white/80 hover:bg-black/40 hover:text-white transition-all text-xs"
-              >
-                <i className="fa-solid fa-trash" />
-              </button>
+              <DeckCardMenu
+                deck={deck}
+                deckGroups={deckGroups}
+                onRename={() => startRename(deck)}
+                onManageCards={() => onManageCards()}
+                onExport={handleExport}
+                onShare={() => handlePublish(deck.id, deck.isPublic)}
+                onAssignGroup={(groupId) => onAssignDeckGroup?.(deck.id, groupId)}
+                onRegenerate={() => onRegenerate()}
+                onAddMore={() => onAddMore()}
+                onGenerateFromDoc={() => onGenerateFromDoc(deck.id, deck.docUrl)}
+                onSuggestCard={() => setSuggestModal({ publicDeckId: deck.subscribedTo, type: "new" })}
+                onReviewSuggestions={() => setSuggestionPanel({ publicDeckId: deck.isReference ? deck.subscribedTo : `${user?.id}-${deck.id}`, deckName: deck.name })}
+                suggestionCount={pendingSuggestions}
+                onDelete={() => setConfirmDeleteDeckId(deck.id)}
+              />
             </div>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="bg-white dark:bg-gray-800 border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-2xl p-4 -mt-3 relative">
+        {/* Stats — compact */}
+        <div className="bg-white dark:bg-gray-800 border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-2xl px-4 py-3 -mt-3 relative">
           <div className="flex items-center gap-4 text-sm">
             <span className="text-gray-600 dark:text-gray-300">
               <i className="fa-solid fa-clone text-indigo-500 mr-1.5" />
@@ -370,163 +399,34 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
               </span>
             )}
           </div>
-          {deck.docUrl && (deck.cardCount || 0) === 0 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onGenerateFromDoc(deck.id, deck.docUrl);
-              }}
-              disabled={generating}
-              className="mt-2 w-full px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-all disabled:opacity-50"
-            >
-              {generating ? (
-                <><i className="fa-solid fa-spinner fa-spin mr-1" /> Generating...</>
-              ) : (
-                <><i className="fa-solid fa-wand-magic-sparkles mr-1" /> Generate Cards from Doc</>
+          {/* Status badges */}
+          {(deck.isPublic || deck.isReference || deck.isClone) && (
+            <div className="flex gap-1.5 mt-2">
+              {deck.isPublic && (
+                <span className="inline-flex items-center px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-medium rounded-full">
+                  <i className="fa-solid fa-globe mr-1" />Shared
+                </span>
               )}
-            </button>
+              {deck.isReference && (
+                <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-medium rounded-full">
+                  <i className="fa-solid fa-link mr-1" />Subscribed
+                </span>
+              )}
+              {deck.isClone && (
+                <span className="inline-flex items-center px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-[10px] font-medium rounded-full">
+                  <i className="fa-solid fa-copy mr-1" />Cloned
+                </span>
+              )}
+            </div>
           )}
-          {deck.docUrl && (deck.cardCount || 0) > 0 && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 truncate">
-              <i className="fa-solid fa-link mr-1" />
-              Google Doc linked
-            </p>
-          )}
-          {!deck.docUrl && (deck.cardCount || 0) === 0 && (
+          {/* Empty deck hint */}
+          {(deck.cardCount || 0) === 0 && (
             <p className="text-xs text-orange-400 dark:text-orange-500 mt-2">
               <i className="fa-solid fa-pen mr-1" />
-              Add cards manually
+              {deck.docUrl ? "Generate cards from linked doc" : "Add cards to get started"}
             </p>
           )}
-          {/* Regen confirmation panel */}
-          {confirmRegenDeckId === deck.id && (
-            <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl" onClick={(e) => e.stopPropagation()}>
-              <p className="text-xs font-semibold text-red-700 dark:text-red-300 mb-1">
-                <i className="fa-solid fa-triangle-exclamation mr-1" />
-                Regenerate all cards?
-              </p>
-              <p className="text-[11px] text-red-600 dark:text-red-400 mb-2.5">
-                This will replace all {deck.cardCount || 0} cards in "{deck.name}" with a fresh set from the linked doc. This cannot be undone.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmRegenDeckId(null);
-                    onRegenerate();
-                  }}
-                  disabled={generating}
-                  className="flex-1 px-3 py-1.5 text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all disabled:opacity-50"
-                >
-                  Yes, regenerate
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmRegenDeckId(null);
-                  }}
-                  className="flex-1 px-3 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-all"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          {/* Delete confirmation is now a modal — rendered at bottom of component */}
-          {/* Suggestion buttons for subscribed decks */}
-          {deck.isReference && deck.subscribedTo && activeDeckId === deck.id && (
-            <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-              <button
-                onClick={(e) => { e.stopPropagation(); setSuggestModal({ publicDeckId: deck.subscribedTo, type: "new" }); }}
-                className="flex-1 px-2 py-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
-              >
-                <i className="fa-solid fa-lightbulb mr-1" />Suggest Card
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setSuggestionPanel({ publicDeckId: deck.subscribedTo, deckName: deck.name }); }}
-                className="flex-1 px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
-              >
-                <i className="fa-solid fa-list-check mr-1" />View Suggestions
-              </button>
-            </div>
-          )}
-          {/* Owner suggestion review for published decks */}
-          {deck.isPublic && activeDeckId === deck.id && (
-            <div className="mt-1.5">
-              <button
-                onClick={(e) => { e.stopPropagation(); setSuggestionPanel({ publicDeckId: `${user?.id}-${deck.id}`, deckName: deck.name }); }}
-                className="w-full px-2 py-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all"
-              >
-                <i className="fa-solid fa-inbox mr-1" />Review Suggestions
-              </button>
-            </div>
-          )}
-          {!deck.isReference && (deck.cardCount || 0) > 0 && activeDeckId === deck.id && (
-            <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-              {deck.docUrl && onRegenerate && confirmRegenDeckId !== deck.id && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmRegenDeckId(deck.id);
-                  }}
-                  disabled={generating}
-                  className="flex-1 px-2 py-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-all"
-                >
-                  <i className="fa-solid fa-arrows-rotate mr-1" />Regen
-                </button>
-              )}
-              {deck.docUrl && onAddMore && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onAddMore(); }}
-                  disabled={generating}
-                  className="flex-1 px-2 py-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all"
-                >
-                  <i className="fa-solid fa-plus mr-1" />More Cards
-                </button>
-              )}
-              {onManageCards && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onManageCards(); }}
-                  className="flex-1 px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600/50 transition-all"
-                >
-                  <i className="fa-solid fa-pen-to-square mr-1" />Manage
-                </button>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Export deck as JSON
-                  const exportData = {
-                    name: deck.name,
-                    cardCount: deck.cardCount,
-                    cards: deck.cards || [],
-                    category: deck.category,
-                    createdAt: deck.createdAt,
-                    exportedAt: new Date().toISOString(),
-                    source: "BetterCram",
-                  };
-                  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${deck.name.replace(/[^a-zA-Z0-9]/g, "_")}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600/50 transition-all"
-              >
-                <i className="fa-solid fa-download mr-1" />Export
-              </button>
-            </div>
-          )}
         </div>
-
-        {/* Active indicator */}
-        {activeDeckId === deck.id && (
-          <div className="absolute top-3 right-3 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow">
-            <i className="fa-solid fa-check text-indigo-600 text-xs" />
-          </div>
-        )}
       </div>
     );
   }

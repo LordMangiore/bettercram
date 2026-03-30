@@ -1064,6 +1064,14 @@ export default function App() {
     try { await saveDeckGroups(groups); } catch (e) { console.error("Save groups failed:", e); }
   }
 
+  async function handleRenameDeck(deckId, newName) {
+    setDecks(prev => prev.map(d => d.id === deckId ? { ...d, name: newName } : d));
+    try {
+      const deck = decks.find(d => d.id === deckId);
+      if (deck) await saveDeck(deckId, { ...deck, name: newName });
+    } catch (e) { console.error("Rename deck failed:", e); }
+  }
+
   async function handleAssignDeckGroup(deckId, groupId) {
     setDecks(prev => prev.map(d => d.id === deckId ? { ...d, group: groupId } : d));
     try { await assignDeckGroup(deckId, groupId); } catch (e) { console.error("Assign group failed:", e); }
@@ -1314,6 +1322,7 @@ export default function App() {
             onSaveDeckGroups={handleSaveDeckGroups}
             onAssignDeckGroup={handleAssignDeckGroup}
             onStudyGroup={handleStudyGroup}
+            onRenameDeck={handleRenameDeck}
           />
         )}
         {mode === "flip" && <FlipMode cards={filteredCards} onRegenCard={handleRegenCard} />}
