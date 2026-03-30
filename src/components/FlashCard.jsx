@@ -80,6 +80,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
   const [speaking, setSpeaking] = useState(false);
   const [regenning, setRegenning] = useState(false);
   const [regenMenu, setRegenMenu] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const audioRef = useRef(null);
   const frontRef = useRef(null);
   const backRef = useRef(null);
@@ -238,7 +239,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               {card.occlusion && card.frontImages?.[0] ? (
                 <div className="mt-3 flex justify-center" onClick={e => e.stopPropagation()}>
                   <div className="relative inline-block">
-                    <img src={card.frontImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain" />
+                    <img src={card.frontImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc(card.frontImages[0]); }} />
                     {card.occlusion.type === "file" && card.occlusion.questionMaskUrl && (
                       <img
                         src={card.occlusion.questionMaskUrl}
@@ -260,7 +261,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               ) : card.frontImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {card.frontImages.map((src, i) => (
-                    <img key={i} src={src} alt="" className="max-h-48 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain" onClick={e => e.stopPropagation()} />
+                    <img key={i} src={src} alt="" className="max-h-48 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={e => { e.stopPropagation(); setLightboxSrc(src); }} />
                   ))}
                 </div>
               )}
@@ -304,7 +305,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               {card.occlusion && card.backImages?.[0] ? (
                 <div className="mt-3 flex justify-center" onClick={e => e.stopPropagation()}>
                   <div className="relative inline-block">
-                    <img src={card.backImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain" />
+                    <img src={card.backImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc(card.backImages[0]); }} />
                     {card.occlusion.type === "file" && card.occlusion.answerMaskUrl && (
                       <img
                         src={card.occlusion.answerMaskUrl}
@@ -317,7 +318,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               ) : card.backImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {card.backImages.map((src, i) => (
-                    <img key={i} src={src} alt="" className="max-h-48 rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain" onClick={e => e.stopPropagation()} />
+                    <img key={i} src={src} alt="" className="max-h-48 rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={e => { e.stopPropagation(); setLightboxSrc(src); }} />
                   ))}
                 </div>
               )}
@@ -455,6 +456,27 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
             className="px-6 py-3 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded-xl font-medium hover:bg-green-200 dark:hover:bg-green-900 transition-colors"
           >
             <i className="fa-solid fa-check mr-2" />Got It!
+          </button>
+        </div>
+      )}
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxSrc(null)}
+          onKeyDown={(e) => e.key === "Escape" && setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt=""
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setLightboxSrc(null)}
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <i className="fa-solid fa-xmark text-lg" />
           </button>
         </div>
       )}
