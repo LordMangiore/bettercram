@@ -1,4 +1,5 @@
 import MediaUploadField from "./MediaUploadField";
+import CategoryInput from "./CategoryInput";
 
 const DIFFICULTY_OPTIONS = ["easy", "medium", "hard"];
 
@@ -91,15 +92,7 @@ export default function CardEditPanel({ card, categories, onChange, onSave, onCa
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Category</label>
-              <select
-                value={card.category}
-                onChange={(e) => update("category", e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none"
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              <CategoryInput value={card.category} onChange={(cat) => update("category", cat)} categories={categories} />
             </div>
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Difficulty</label>

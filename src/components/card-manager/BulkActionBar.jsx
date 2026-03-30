@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CategoryInput from "./CategoryInput";
 
 const DIFFICULTY_OPTIONS = ["easy", "medium", "hard"];
 
@@ -44,16 +45,12 @@ export default function BulkActionBar({
         <div className="flex-1" />
 
         {/* Bulk category */}
-        <select
+        <CategoryInput
           value={pendingCategory}
-          onChange={(e) => setPendingCategory(e.target.value)}
-          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none"
-        >
-          <option value="">Category</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          onChange={setPendingCategory}
+          categories={categories}
+          className="w-36"
+        />
 
         {/* Bulk difficulty */}
         <select

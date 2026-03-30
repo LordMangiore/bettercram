@@ -5,6 +5,7 @@ import CardRow from "./card-manager/CardRow";
 import BulkActionBar from "./card-manager/BulkActionBar";
 import CardEditPanel from "./card-manager/CardEditPanel";
 import MediaUploadField from "./card-manager/MediaUploadField";
+import CategoryInput from "./card-manager/CategoryInput";
 
 const DIFFICULTY_OPTIONS = ["easy", "medium", "hard"];
 const PAGE_SIZE = 50;
@@ -228,9 +229,7 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Category</label>
-                <select value={newCard.category} onChange={(e) => setNewCard({ ...newCard, category: e.target.value })} className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none">
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <CategoryInput value={newCard.category} onChange={(cat) => setNewCard({ ...newCard, category: cat })} categories={categories} />
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Difficulty</label>
