@@ -1,106 +1,150 @@
-import { useState, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import SuggestEditModal from "./SuggestEditModal";
+import CardToolbar from "./card-manager/CardToolbar";
+import CardRow from "./card-manager/CardRow";
+import BulkActionBar from "./card-manager/BulkActionBar";
+import CardEditPanel from "./card-manager/CardEditPanel";
+import MediaUploadField from "./card-manager/MediaUploadField";
 
 const DIFFICULTY_OPTIONS = ["easy", "medium", "hard"];
-
-function MediaUploadField({ label, accept, currentUrls = [], onUrlsChange, icon }) {
-  const inputRef = useRef(null);
-  const [uploading, setUploading] = useState(false);
-
-  async function handleFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const headers = {};
-      try { headers["X-User-Id"] = JSON.parse(localStorage.getItem("mcat-user"))?.id; } catch {}
-      const token = localStorage.getItem("mcat-access-token");
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const arrayBuf = await file.arrayBuffer();
-      const hashBuf = await crypto.subtle.digest("SHA-256", arrayBuf);
-      const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("key", hash);
-
-      const res = await fetch("/.netlify/functions/upload-media", {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        onUrlsChange([...currentUrls, data.url]);
-      }
-    } catch (err) {
-      console.error("Media upload failed:", err);
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
-
-  function removeUrl(idx) {
-    onUrlsChange(currentUrls.filter((_, i) => i !== idx));
-  }
-
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{label}</label>
-      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
-
-      {currentUrls.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {currentUrls.map((url, i) => (
-            <div key={i} className="relative group">
-              {accept.includes("image") ? (
-                <img src={url} alt="" className="h-16 w-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
-              ) : (
-                <div className="h-10 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs text-gray-500">
-                  <i className="fa-solid fa-music" /> Audio {i + 1}
-                </div>
-              )}
-              <button
-                onClick={() => removeUrl(i)}
-                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-        className="px-3 py-1.5 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors"
-      >
-        {uploading ? <><i className="fa-solid fa-spinner fa-spin mr-1" /> Uploading...</> : <><i className={`fa-solid ${icon} mr-1`} /> Add {label.toLowerCase()}</>}
-      </button>
-    </div>
-  );
-}
-const difficultyColors = {
-  easy: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-  hard: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-};
+const PAGE_SIZE = 50;
 
 export default function CardManager({ cards, allCards, categories, onAddCard, onEditCard, onDeleteCard, isReference, subscribedTo }) {
+  // --- Suggest edit (subscribed decks) ---
   const [suggestModal, setSuggestModal] = useState(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [newCard, setNewCard] = useState({ front: "", back: "", category: categories[0] || "General", difficulty: "medium" });
-  const [editCard, setEditCard] = useState(null);
 
+  // --- Add card form ---
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCard, setNewCard] = useState({ front: "", back: "", category: categories[0] || "General", difficulty: "medium", frontImages: [], backImages: [], frontAudio: [], backAudio: [] });
   const [addReversed, setAddReversed] = useState(false);
 
+  // --- Edit panel ---
+  const [editCard, setEditCard] = useState(null);
+
+  // --- Delete confirmation ---
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  // --- Search, sort, filter ---
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
+  const [filterDifficulty, setFilterDifficulty] = useState("all");
+  const [filterType, setFilterType] = useState("all");
+
+  // --- Bulk selection ---
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // --- Progressive rendering ---
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef(null);
+
+  // Reset visible count and selection when filters change
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+    setSelectedIds(new Set());
+  }, [searchQuery, sortBy, filterDifficulty, filterType]);
+
+  // Prune stale selections when cards change
+  useEffect(() => {
+    const cardIds = new Set(cards.map(c => c.id));
+    setSelectedIds(prev => {
+      const pruned = new Set([...prev].filter(id => cardIds.has(id)));
+      return pruned.size !== prev.size ? pruned : prev;
+    });
+  }, [cards]);
+
+  // --- Filtering + sorting ---
+  const processedCards = useMemo(() => {
+    let result = cards;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(c =>
+        (c.front || "").toLowerCase().includes(q) || (c.back || "").toLowerCase().includes(q)
+      );
+    }
+
+    if (filterDifficulty !== "all") {
+      result = result.filter(c => c.difficulty === filterDifficulty);
+    }
+
+    if (filterType === "custom") result = result.filter(c => c.custom);
+    if (filterType === "imported") result = result.filter(c => !c.custom);
+
+    switch (sortBy) {
+      case "oldest":
+        result = [...result].sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+        break;
+      case "newest":
+        result = [...result].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+        break;
+      case "category":
+        result = [...result].sort((a, b) => (a.category || "").localeCompare(b.category || ""));
+        break;
+      case "difficulty": {
+        const order = { easy: 0, medium: 1, hard: 2 };
+        result = [...result].sort((a, b) => (order[a.difficulty] ?? 1) - (order[b.difficulty] ?? 1));
+        break;
+      }
+    }
+
+    return result;
+  }, [cards, searchQuery, sortBy, filterDifficulty, filterType]);
+
+  const visibleCards = processedCards.slice(0, visibleCount);
+  const hasMore = visibleCount < processedCards.length;
+
+  // Infinite scroll
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisibleCount(v => v + PAGE_SIZE);
+    }, { threshold: 0.1 });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, visibleCount]);
+
+  // --- Selection handlers ---
+  function toggleSelect(cardId) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(cardId) ? next.delete(cardId) : next.add(cardId);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(processedCards.map(c => c.id)));
+  }
+
+  function deselectAll() {
+    setSelectedIds(new Set());
+  }
+
+  // --- Bulk operations ---
+  function handleBulkCategory(category) {
+    for (const id of selectedIds) {
+      const card = cards.find(c => c.id === id);
+      if (card) onEditCard(id, { ...card, category });
+    }
+    deselectAll();
+  }
+
+  function handleBulkDifficulty(difficulty) {
+    for (const id of selectedIds) {
+      const card = cards.find(c => c.id === id);
+      if (card) onEditCard(id, { ...card, difficulty });
+    }
+    deselectAll();
+  }
+
+  function handleBulkDelete() {
+    for (const id of selectedIds) {
+      onDeleteCard(id);
+    }
+    deselectAll();
+  }
+
+  // --- Add card ---
   function handleAdd() {
     if (!newCard.front.trim() || !newCard.back.trim()) return;
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -109,16 +153,11 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
       id,
       custom: true,
       createdAt: new Date().toISOString(),
-      frontImages: newCard.frontImages || [],
-      backImages: newCard.backImages || [],
-      frontAudio: newCard.frontAudio || [],
-      backAudio: newCard.backAudio || [],
     };
     onAddCard(card);
 
-    // Also create a reversed card if toggled
     if (addReversed) {
-      const reversed = {
+      onAddCard({
         ...card,
         id: id + "-rev",
         front: newCard.back.trim(),
@@ -127,43 +166,27 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
         backImages: newCard.frontImages || [],
         frontAudio: newCard.backAudio || [],
         backAudio: newCard.frontAudio || [],
-      };
-      onAddCard(reversed);
+      });
     }
 
     setNewCard({ front: "", back: "", category: categories[0] || "General", difficulty: "medium", frontImages: [], backImages: [], frontAudio: [], backAudio: [] });
     setShowAddForm(false);
   }
 
+  // --- Edit ---
   function startEdit(card) {
-    setEditingId(card.id);
     setEditCard({ ...card });
   }
 
   function saveEdit() {
-    if (!editCard.front.trim() || !editCard.back.trim()) return;
+    if (!editCard?.front?.trim() || !editCard?.back?.trim()) return;
     onEditCard(editCard.id, editCard);
-    setEditingId(null);
     setEditCard(null);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditCard(null);
-  }
-
-  function confirmDelete(card) {
-    setDeleteConfirm(card.id);
-  }
-
-  function doDelete(cardId) {
-    onDeleteCard(cardId);
-    setDeleteConfirm(null);
   }
 
   return (
-    <div className="space-y-4">
-      {/* Add card button / form — or suggest card for subscribed decks */}
+    <div className="space-y-3">
+      {/* Add card button / form */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <button
           onClick={() => isReference && subscribedTo ? setSuggestModal({ type: "new" }) : setShowAddForm(!showAddForm)}
@@ -198,47 +221,21 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
                 className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none"
               />
             </div>
-            {/* Media uploads */}
             <div className="grid grid-cols-2 gap-3">
-              <MediaUploadField
-                label="Image"
-                accept="image/*"
-                icon="fa-image"
-                currentUrls={newCard.frontImages || []}
-                onUrlsChange={(urls) => setNewCard({ ...newCard, frontImages: urls })}
-              />
-              <MediaUploadField
-                label="Audio"
-                accept="audio/*"
-                icon="fa-music"
-                currentUrls={newCard.frontAudio || []}
-                onUrlsChange={(urls) => setNewCard({ ...newCard, frontAudio: urls })}
-              />
+              <MediaUploadField label="Image" accept="image/*" icon="fa-image" currentUrls={newCard.frontImages || []} onUrlsChange={(urls) => setNewCard({ ...newCard, frontImages: urls })} />
+              <MediaUploadField label="Audio" accept="audio/*" icon="fa-music" currentUrls={newCard.frontAudio || []} onUrlsChange={(urls) => setNewCard({ ...newCard, frontAudio: urls })} />
             </div>
-
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Category</label>
-                <select
-                  value={newCard.category}
-                  onChange={(e) => setNewCard({ ...newCard, category: e.target.value })}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none"
-                >
-                  {categories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                <select value={newCard.category} onChange={(e) => setNewCard({ ...newCard, category: e.target.value })} className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none">
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Difficulty</label>
-                <select
-                  value={newCard.difficulty}
-                  onChange={(e) => setNewCard({ ...newCard, difficulty: e.target.value })}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none"
-                >
-                  {DIFFICULTY_OPTIONS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
+                <select value={newCard.difficulty} onChange={(e) => setNewCard({ ...newCard, difficulty: e.target.value })} className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none">
+                  {DIFFICULTY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
             </div>
@@ -248,19 +245,9 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
                 <span className="text-xs text-gray-500 dark:text-gray-400">Also create reversed card</span>
               </label>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAdd}
-                  disabled={!newCard.front.trim() || !newCard.back.trim()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  <i className="fa-solid fa-plus mr-1.5" />
-                  Add Card{addReversed ? "s" : ""}
+                <button onClick={() => setShowAddForm(false)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Cancel</button>
+                <button onClick={handleAdd} disabled={!newCard.front.trim() || !newCard.back.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg text-sm font-medium transition-colors">
+                  <i className="fa-solid fa-plus mr-1.5" />Add Card{addReversed ? "s" : ""}
                 </button>
               </div>
             </div>
@@ -268,166 +255,66 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
         )}
       </div>
 
-      {/* Card count */}
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        {cards.length} cards {cards.filter(c => c.custom).length > 0 && `(${cards.filter(c => c.custom).length} custom)`}
-      </p>
+      {/* Search / Sort / Filter toolbar */}
+      <CardToolbar
+        searchQuery={searchQuery} setSearchQuery={setSearchQuery}
+        sortBy={sortBy} setSortBy={setSortBy}
+        filterDifficulty={filterDifficulty} setFilterDifficulty={setFilterDifficulty}
+        filterType={filterType} setFilterType={setFilterType}
+        totalCards={cards.length}
+        visibleCards={processedCards.length}
+      />
 
       {/* Card list */}
-      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-        {cards.map((card) => (
-          <div
-            key={card.id}
-            className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all"
-          >
-            {editingId === card.id ? (
-              /* Edit mode */
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Question</label>
-                  <textarea
-                    value={editCard.front}
-                    onChange={(e) => setEditCard({ ...editCard, front: e.target.value })}
-                    rows={2}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Answer</label>
-                  <textarea
-                    value={editCard.back}
-                    onChange={(e) => setEditCard({ ...editCard, back: e.target.value })}
-                    rows={2}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
-                  />
-                </div>
-                {/* Media uploads in edit mode */}
-                <div className="grid grid-cols-2 gap-3">
-                  <MediaUploadField
-                    label="Image"
-                    accept="image/*"
-                    icon="fa-image"
-                    currentUrls={editCard.frontImages || []}
-                    onUrlsChange={(urls) => setEditCard({ ...editCard, frontImages: urls })}
-                  />
-                  <MediaUploadField
-                    label="Audio"
-                    accept="audio/*"
-                    icon="fa-music"
-                    currentUrls={editCard.frontAudio || []}
-                    onUrlsChange={(urls) => setEditCard({ ...editCard, frontAudio: urls })}
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <select
-                    value={editCard.category}
-                    onChange={(e) => setEditCard({ ...editCard, category: e.target.value })}
-                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none"
-                  >
-                    {categories.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={editCard.difficulty}
-                    onChange={(e) => setEditCard({ ...editCard, difficulty: e.target.value })}
-                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none"
-                  >
-                    {DIFFICULTY_OPTIONS.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <button onClick={cancelEdit} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                    Cancel
-                  </button>
-                  <button
-                    onClick={saveEdit}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* View mode */
-              <div className="p-4 flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full">
-                      {card.category}
-                    </span>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${difficultyColors[card.difficulty] || ""}`}>
-                      {card.difficulty}
-                    </span>
-                    {card.custom && (
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
-                        Custom
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 font-medium">
-                    {card.front}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 line-clamp-1 mt-1">
-                    {card.back}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {isReference ? (
-                    /* Subscribed deck — suggest edits only */
-                    <button
-                      onClick={() => setSuggestModal({ card, type: "edit" })}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/30 transition-colors"
-                      title="Suggest edit"
-                    >
-                      <i className="fa-solid fa-lightbulb text-xs" />
-                    </button>
-                  ) : (
-                    /* Own deck — full edit/delete */
-                    <>
-                      <button
-                        onClick={() => startEdit(card)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:text-indigo-400 dark:hover:bg-indigo-900/30 transition-colors"
-                        title="Edit card"
-                      >
-                        <i className="fa-solid fa-pen text-xs" />
-                      </button>
-                      {deleteConfirm === card.id ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => doDelete(card.id)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/30"
-                            title="Confirm delete"
-                          >
-                            <i className="fa-solid fa-check text-xs" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
-                            title="Cancel"
-                          >
-                            <i className="fa-solid fa-xmark text-xs" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => confirmDelete(card)}
-                          className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/30 transition-colors"
-                          title="Delete card"
-                        >
-                          <i className="fa-solid fa-trash text-xs" />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
+      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1 relative">
+        {visibleCards.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+            <i className="fa-solid fa-magnifying-glass text-2xl mb-3 block" />
+            <p className="text-sm">No cards match your filters</p>
           </div>
-        ))}
+        ) : (
+          visibleCards.map((card) => (
+            <CardRow
+              key={card.id}
+              card={card}
+              isReference={isReference}
+              showCheckbox={!isReference}
+              selected={selectedIds.has(card.id)}
+              onToggleSelect={toggleSelect}
+              onStartEdit={startEdit}
+              onDelete={(c) => setDeleteConfirm(c.id)}
+              deleteConfirm={deleteConfirm}
+              onConfirmDelete={(id) => { onDeleteCard(id); setDeleteConfirm(null); }}
+              onCancelDelete={() => setDeleteConfirm(null)}
+              onSuggestEdit={(c) => setSuggestModal({ card: c, type: "edit" })}
+            />
+          ))
+        )}
+
+        {/* Infinite scroll sentinel */}
+        {hasMore && <div ref={sentinelRef} className="h-8 flex items-center justify-center text-xs text-gray-400"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading more...</div>}
+
+        {/* Bulk action bar */}
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalVisible={processedCards.length}
+          onSelectAll={selectAll}
+          onDeselectAll={deselectAll}
+          onBulkCategory={handleBulkCategory}
+          onBulkDifficulty={handleBulkDifficulty}
+          onBulkDelete={handleBulkDelete}
+          categories={categories}
+        />
       </div>
+
+      {/* Slide-out edit panel */}
+      <CardEditPanel
+        card={editCard}
+        categories={categories}
+        onChange={setEditCard}
+        onSave={saveEdit}
+        onCancel={() => setEditCard(null)}
+      />
 
       {/* Suggest edit modal for subscribed decks */}
       {suggestModal && subscribedTo && (
