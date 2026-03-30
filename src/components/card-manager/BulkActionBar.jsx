@@ -9,8 +9,23 @@ export default function BulkActionBar({
   categories,
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pendingCategory, setPendingCategory] = useState("");
+  const [pendingDifficulty, setPendingDifficulty] = useState("");
 
   if (selectedCount === 0) return null;
+
+  function applyChanges() {
+    if (pendingCategory) {
+      onBulkCategory(pendingCategory);
+      setPendingCategory("");
+    }
+    if (pendingDifficulty) {
+      onBulkDifficulty(pendingDifficulty);
+      setPendingDifficulty("");
+    }
+  }
+
+  const hasChanges = pendingCategory || pendingDifficulty;
 
   return (
     <div className="sticky bottom-0 z-20 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 px-4 py-3 rounded-b-2xl">
@@ -30,11 +45,11 @@ export default function BulkActionBar({
 
         {/* Bulk category */}
         <select
-          defaultValue=""
-          onChange={(e) => { if (e.target.value) { onBulkCategory(e.target.value); e.target.value = ""; } }}
+          value={pendingCategory}
+          onChange={(e) => setPendingCategory(e.target.value)}
           className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none"
         >
-          <option value="" disabled>Set category</option>
+          <option value="">Category</option>
           {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -42,15 +57,25 @@ export default function BulkActionBar({
 
         {/* Bulk difficulty */}
         <select
-          defaultValue=""
-          onChange={(e) => { if (e.target.value) { onBulkDifficulty(e.target.value); e.target.value = ""; } }}
+          value={pendingDifficulty}
+          onChange={(e) => setPendingDifficulty(e.target.value)}
           className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none"
         >
-          <option value="" disabled>Set difficulty</option>
+          <option value="">Difficulty</option>
           {DIFFICULTY_OPTIONS.map((d) => (
             <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
           ))}
         </select>
+
+        {/* Apply button */}
+        {hasChanges && (
+          <button
+            onClick={applyChanges}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors"
+          >
+            Apply
+          </button>
+        )}
 
         {/* Bulk delete */}
         {confirmDelete ? (
