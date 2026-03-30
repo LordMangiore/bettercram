@@ -77,6 +77,88 @@ export function extractCategory(tags) {
   return primaryCategory;
 }
 
+/**
+ * Sanitize SVG content — keep shape elements, strip scripts/events.
+ * Returns cleaned SVG string safe for dangerouslySetInnerHTML (use with DOMPurify too).
+ */
+export function sanitizeSvg(svg) {
+  return svg
+    // Remove script tags and their content
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    // Remove event handler attributes
+    .replace(/\s+on\w+="[^"]*"/gi, "")
+    .replace(/\s+on\w+='[^']*'/gi, "")
+    // Remove javascript: URIs
+    .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, "")
+    .trim();
+}
+
+/**
+ * Detect and parse Image Occlusion cards from Anki note fields.
+ * Works with IO Enhanced (add-on) and native IO (Anki 23.10+).
+ *
+ * @param {string[]} fields - The note's fields split by \x1f
+ * @returns {object|null} - { imageFilename, maskSvg, header, width, height } or null if not IO
+ */
+export function parseOcclusion(fields) {
+  if (!fields || fields.length < 2) return null;
+
+  // Strategy: find the field with an <img> and the field with an <svg>
+  let imageField = null;
+  let svgField = null;
+  let headerText = "";
+
+  for (const field of fields) {
+    const hasImg = /<img[^>]+src=/i.test(field);
+    const hasSvg = /<svg[\s>]/i.test(field);
+
+    if (hasImg && !imageField) imageField = field;
+    if (hasSvg && !svgField) svgField = field;
+  }
+
+  // Not an IO card if we don't have both image and SVG
+  if (!imageField || !svgField) return null;
+
+  // Verify SVG contains actual mask shapes (not just any SVG)
+  const hasShapes = /<(rect|ellipse|circle|polygon|path)[\s>]/i.test(svgField);
+  if (!hasShapes) return null;
+
+  // Extract image filename
+  const imgMatch = imageField.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (!imgMatch) return null;
+  const imageFilename = imgMatch[1];
+
+  // Extract SVG content (the full <svg>...</svg> block)
+  const svgMatch = svgField.match(/<svg[\s\S]*?<\/svg>/i);
+  if (!svgMatch) return null;
+  const maskSvg = sanitizeSvg(svgMatch[0]);
+
+  // Extract dimensions from SVG viewBox or width/height attributes
+  let width = 0, height = 0;
+  const viewBoxMatch = maskSvg.match(/viewBox=["'](\d+)\s+(\d+)\s+(\d+)\s+(\d+)["']/i);
+  if (viewBoxMatch) {
+    width = parseInt(viewBoxMatch[3]);
+    height = parseInt(viewBoxMatch[4]);
+  } else {
+    const wMatch = maskSvg.match(/width=["'](\d+)/i);
+    const hMatch = maskSvg.match(/height=["'](\d+)/i);
+    if (wMatch) width = parseInt(wMatch[1]);
+    if (hMatch) height = parseInt(hMatch[1]);
+  }
+
+  // Look for header text in other fields (not the image or SVG field)
+  for (const field of fields) {
+    if (field === imageField || field === svgField) continue;
+    const text = stripHtml(field).trim();
+    if (text && text.length > 0 && text.length < 200) {
+      headerText = text;
+      break;
+    }
+  }
+
+  return { imageFilename, maskSvg, header: headerText, width, height };
+}
+
 /** Extract image and audio filenames from HTML content. */
 export function extractMediaRefs(html) {
   const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
@@ -179,6 +261,37 @@ export async function parseAnkiFile(file, onProgress = () => {}) {
     let front = fields[0];
     let back = fields[1];
 
+    // Check for Image Occlusion card (detect before stripping HTML)
+    const occlusion = parseOcclusion(fields);
+    if (occlusion) {
+      // IO card — extract image ref and preserve SVG mask
+      referencedMedia.add(occlusion.imageFilename);
+      // Also extract any other media refs from all fields
+      for (const field of fields) {
+        const refs = extractMediaRefs(field);
+        [...refs.images, ...refs.audio].forEach(f => referencedMedia.add(f));
+      }
+
+      const primaryCategory = extractCategory(tags);
+      cards.push({
+        front: occlusion.header || "Identify the highlighted region",
+        back: stripHtml(back) || "(see image)",
+        category: primaryCategory,
+        difficulty: "medium",
+        frontImages: [occlusion.imageFilename],
+        backImages: [occlusion.imageFilename],
+        frontAudio: [],
+        backAudio: [],
+        occlusion: {
+          maskSvg: occlusion.maskSvg,
+          originalWidth: occlusion.width,
+          originalHeight: occlusion.height,
+        },
+      });
+      continue;
+    }
+
+    // Standard card processing
     // Extract media references from raw HTML
     const frontMedia = extractMediaRefs(front);
     const backMedia = extractMediaRefs(back);

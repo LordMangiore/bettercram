@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripHtml, parseCloze, extractCategory, extractMediaRefs } from "../ankiParser";
+import { stripHtml, parseCloze, extractCategory, extractMediaRefs, parseOcclusion, sanitizeSvg } from "../ankiParser";
 
 describe("stripHtml", () => {
   it("removes basic HTML tags", () => {
@@ -133,5 +133,110 @@ describe("extractMediaRefs", () => {
   it("handles single-quoted src attributes", () => {
     const result = extractMediaRefs("<img src='photo.jpg'>");
     expect(result.images).toEqual(["photo.jpg"]);
+  });
+});
+
+describe("sanitizeSvg", () => {
+  it("removes script tags", () => {
+    const svg = '<svg><script>alert("xss")</script><rect x="0" y="0" width="50" height="50"/></svg>';
+    const result = sanitizeSvg(svg);
+    expect(result).not.toContain("<script");
+    expect(result).toContain("<rect");
+  });
+
+  it("removes event handler attributes", () => {
+    const svg = '<svg><rect onclick="alert(1)" onload="fetch()" x="0" y="0" width="50" height="50"/></svg>';
+    const result = sanitizeSvg(svg);
+    expect(result).not.toContain("onclick");
+    expect(result).not.toContain("onload");
+    expect(result).toContain("<rect");
+  });
+
+  it("removes javascript: URIs", () => {
+    const svg = '<svg><a href="javascript:alert(1)"><rect/></a></svg>';
+    const result = sanitizeSvg(svg);
+    expect(result).not.toContain("javascript:");
+  });
+
+  it("preserves shape elements and viewBox", () => {
+    const svg = '<svg viewBox="0 0 800 600"><rect x="100" y="200" width="50" height="50" fill="black"/><circle cx="300" cy="150" r="30"/></svg>';
+    const result = sanitizeSvg(svg);
+    expect(result).toContain("viewBox");
+    expect(result).toContain("<rect");
+    expect(result).toContain("<circle");
+  });
+});
+
+describe("parseOcclusion", () => {
+  it("detects IO card with image + SVG mask fields", () => {
+    const fields = [
+      '<img src="anatomy.png">',
+      '<svg viewBox="0 0 800 600"><rect x="100" y="200" width="50" height="50" fill="black"/></svg>',
+      "Identify the structure",
+    ];
+    const result = parseOcclusion(fields);
+    expect(result).not.toBeNull();
+    expect(result.imageFilename).toBe("anatomy.png");
+    expect(result.maskSvg).toContain("<rect");
+    expect(result.header).toBe("Identify the structure");
+    expect(result.width).toBe(800);
+    expect(result.height).toBe(600);
+  });
+
+  it("returns null for regular cards (no SVG)", () => {
+    const fields = ["What is mitosis?", "Cell division"];
+    expect(parseOcclusion(fields)).toBeNull();
+  });
+
+  it("returns null for cards with SVG but no shapes", () => {
+    const fields = [
+      '<img src="photo.jpg">',
+      '<svg><text>Just text</text></svg>',
+    ];
+    expect(parseOcclusion(fields)).toBeNull();
+  });
+
+  it("returns null for cards with only image, no SVG", () => {
+    const fields = ['<img src="photo.jpg">', "Back text"];
+    expect(parseOcclusion(fields)).toBeNull();
+  });
+
+  it("extracts dimensions from width/height when no viewBox", () => {
+    const fields = [
+      '<img src="img.png">',
+      '<svg width="400" height="300"><rect x="10" y="10" width="20" height="20"/></svg>',
+    ];
+    const result = parseOcclusion(fields);
+    expect(result.width).toBe(400);
+    expect(result.height).toBe(300);
+  });
+
+  it("handles fields in any order", () => {
+    const fields = [
+      "Header text",
+      '<svg viewBox="0 0 100 100"><ellipse cx="50" cy="50" rx="20" ry="10"/></svg>',
+      '<img src="diagram.jpg">',
+    ];
+    const result = parseOcclusion(fields);
+    expect(result).not.toBeNull();
+    expect(result.imageFilename).toBe("diagram.jpg");
+    expect(result.maskSvg).toContain("<ellipse");
+    expect(result.header).toBe("Header text");
+  });
+
+  it("sanitizes SVG in the output", () => {
+    const fields = [
+      '<img src="img.png">',
+      '<svg viewBox="0 0 100 100"><script>alert(1)</script><rect x="0" y="0" width="10" height="10"/></svg>',
+    ];
+    const result = parseOcclusion(fields);
+    expect(result.maskSvg).not.toContain("<script");
+    expect(result.maskSvg).toContain("<rect");
+  });
+
+  it("returns null for insufficient fields", () => {
+    expect(parseOcclusion(null)).toBeNull();
+    expect(parseOcclusion([])).toBeNull();
+    expect(parseOcclusion(["single field"])).toBeNull();
   });
 });

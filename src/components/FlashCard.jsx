@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Rating } from "ts-fsrs";
 import { textToSpeech } from "../api";
+import DOMPurify from "dompurify";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -234,7 +235,18 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
                   ? <div className={`${textSize(card.front)} text-gray-800 dark:text-gray-100 font-medium math-content`} dangerouslySetInnerHTML={{ __html: math.html }} />
                   : <p className={`${textSize(card.front)} text-gray-800 dark:text-gray-100 font-medium`}>{card.front}</p>;
               })()}
-              {card.frontImages?.length > 0 && (
+              {card.occlusion && card.frontImages?.[0] ? (
+                <div className="mt-3 relative inline-block w-full" onClick={e => e.stopPropagation()}>
+                  <img src={card.frontImages[0]} alt="" className="max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain" />
+                  <div
+                    className="absolute inset-0 rounded-lg"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(
+                      card.occlusion.maskSvg.replace(/<svg/, '<svg preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%"'),
+                      { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ["rect", "ellipse", "circle", "polygon", "path", "g"], ADD_ATTR: ["viewBox", "preserveAspectRatio"] }
+                    ) }}
+                  />
+                </div>
+              ) : card.frontImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {card.frontImages.map((src, i) => (
                     <img key={i} src={src} alt="" className="max-h-48 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain" onClick={e => e.stopPropagation()} />
