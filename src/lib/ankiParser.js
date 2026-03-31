@@ -358,17 +358,41 @@ export async function parseAnkiFile(file, onProgress = () => {}) {
     }
 
     // Standard card processing
-    // Extract media references from raw HTML
+    // Extract media references from front and back fields
     const frontMedia = extractMediaRefs(front);
     const backMedia = extractMediaRefs(back);
-    const frontImages = frontMedia.images;
-    const backImages = backMedia.images;
-    const frontAudio = frontMedia.audio;
-    const backAudio = backMedia.audio;
+    const frontImages = [...frontMedia.images];
+    const backImages = [...backMedia.images];
+    const frontAudio = [...frontMedia.audio];
+    const backAudio = [...backMedia.audio];
+
+    // For multi-field cards (e.g. anatomy cards with 50 fields):
+    // scan extra fields for images and text if back is empty
+    let extraBackText = "";
+    if (fields.length > 2 && !stripHtml(back).trim()) {
+      for (let fi = 2; fi < fields.length; fi++) {
+        const fieldRefs = extractMediaRefs(fields[fi]);
+        // First image field with no images yet → front image; second → back image
+        if (fieldRefs.images.length > 0) {
+          if (frontImages.length === 0) {
+            frontImages.push(...fieldRefs.images);
+          } else {
+            backImages.push(...fieldRefs.images);
+          }
+        }
+        fieldRefs.audio.forEach(a => backAudio.push(a));
+        // Collect non-empty text fields as back content (labels, descriptions)
+        const fieldText = stripHtml(fields[fi]).trim();
+        if (fieldText && fieldText.length > 0 && fieldText.length < 200) {
+          extraBackText += (extraBackText ? "\n" : "") + fieldText;
+        }
+      }
+    }
+
     [...frontImages, ...backImages, ...frontAudio, ...backAudio].forEach(f => referencedMedia.add(f));
 
     let cleanFront = stripHtml(front);
-    let cleanBack = stripHtml(back);
+    let cleanBack = stripHtml(back) || extraBackText;
 
     // Handle Anki cloze deletions
     const isCloze = /\{\{c\d+::/.test(cleanFront) || /\{\{c\d+::/.test(cleanBack);

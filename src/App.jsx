@@ -776,7 +776,7 @@ export default function App() {
   const activeDeck = decks.find(d => d.id === activeDeckId);
 
   const filteredCards = useMemo(() => {
-    let result = cards.filter((c) => c?.front && (c?.back || c?.occlusion)); // skip malformed cards
+    let result = cards.filter((c) => c?.front && (c?.back || c?.occlusion || c?.frontImages?.length > 0)); // skip malformed cards
     if (activeCategory !== "All") {
       result = result.filter((c) => c.category === activeCategory);
     }
@@ -792,7 +792,7 @@ export default function App() {
   }, [cards, activeCategory, searchQuery]);
 
   const categoryCounts = useMemo(() => {
-    const valid = cards.filter((c) => c?.front && (c?.back || c?.occlusion));
+    const valid = cards.filter((c) => c?.front && (c?.back || c?.occlusion || c?.frontImages?.length > 0));
     const counts = { All: valid.length };
     valid.forEach((c) => {
       const cat = c.category || "General";
