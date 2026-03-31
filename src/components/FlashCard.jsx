@@ -239,7 +239,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               {card.occlusion && card.frontImages?.[0] ? (
                 <div className="mt-3 flex justify-center" onClick={e => e.stopPropagation()}>
                   <div className="relative inline-block">
-                    <img src={card.frontImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc(card.frontImages[0]); }} />
+                    <img src={card.frontImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc({ src: card.frontImages[0], maskUrl: card.occlusion?.questionMaskUrl, maskSvg: card.occlusion?.type === "inline" ? card.occlusion?.maskSvg : null }); }} />
                     {card.occlusion.type === "file" && card.occlusion.questionMaskUrl && (
                       <img
                         src={card.occlusion.questionMaskUrl}
@@ -261,7 +261,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               ) : card.frontImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {card.frontImages.map((src, i) => (
-                    <img key={i} src={src} alt="" className="max-h-48 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={e => { e.stopPropagation(); setLightboxSrc(src); }} />
+                    <img key={i} src={src} alt="" className="max-h-48 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={e => { e.stopPropagation(); setLightboxSrc({ src }); }} />
                   ))}
                 </div>
               )}
@@ -305,7 +305,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               {card.occlusion && card.backImages?.[0] ? (
                 <div className="mt-3 flex justify-center" onClick={e => e.stopPropagation()}>
                   <div className="relative inline-block">
-                    <img src={card.backImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc(card.backImages[0]); }} />
+                    <img src={card.backImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc({ src: card.backImages[0], maskUrl: card.occlusion?.answerMaskUrl, maskSvg: null }); }} />
                     {card.occlusion.type === "file" && card.occlusion.answerMaskUrl && (
                       <img
                         src={card.occlusion.answerMaskUrl}
@@ -318,7 +318,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
               ) : card.backImages?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {card.backImages.map((src, i) => (
-                    <img key={i} src={src} alt="" className="max-h-48 rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={e => { e.stopPropagation(); setLightboxSrc(src); }} />
+                    <img key={i} src={src} alt="" className="max-h-48 rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={e => { e.stopPropagation(); setLightboxSrc({ src }); }} />
                   ))}
                 </div>
               )}
@@ -466,12 +466,29 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
           onClick={() => setLightboxSrc(null)}
           onKeyDown={(e) => e.key === "Escape" && setLightboxSrc(null)}
         >
-          <img
-            src={lightboxSrc}
-            alt=""
-            className="max-w-full max-h-full object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="relative inline-block max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightboxSrc.src}
+              alt=""
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            />
+            {lightboxSrc.maskUrl && (
+              <img
+                src={lightboxSrc.maskUrl}
+                alt=""
+                className="absolute top-0 left-0 w-full h-full rounded-lg object-contain pointer-events-none"
+              />
+            )}
+            {lightboxSrc.maskSvg && (
+              <div
+                className="absolute top-0 left-0 w-full h-full rounded-lg pointer-events-none"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(
+                  lightboxSrc.maskSvg.replace(/<svg/, '<svg preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%"'),
+                  { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ["rect", "ellipse", "circle", "polygon", "path", "g"], ADD_ATTR: ["viewBox", "preserveAspectRatio"] }
+                ) }}
+              />
+            )}
+          </div>
           <button
             onClick={() => setLightboxSrc(null)}
             className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
