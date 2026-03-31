@@ -94,12 +94,14 @@ export default function VoiceTutorMode({ cards, deckName, progress = {}, session
           ? `\nSTUDY CONTEXT: The student was just studying "${activeCategory}" cards specifically. Focus your questions and discussion on ${activeCategory} topics. They switched to Voice Tutor from a study session on this category${sessionStats ? ` where they reviewed ${sessionStats.reviewed} cards with ${sessionStats.correct} correct and ${sessionStats.again} forgotten` : ""}.`
           : "";
 
-        // Detect returning user
+        // Detect returning user (keyed per user ID)
         let isReturning = false;
         try {
-          const lastNova = localStorage.getItem("bc-nova-last-session");
+          const userId = JSON.parse(localStorage.getItem("mcat-user"))?.id;
+          const key = userId ? `bc-nova-last-session-${userId}` : "bc-nova-last-session";
+          const lastNova = localStorage.getItem(key);
           if (lastNova) isReturning = true;
-          localStorage.setItem("bc-nova-last-session", Date.now().toString());
+          localStorage.setItem(key, Date.now().toString());
         } catch {}
 
         let systemPrompt, firstMsg;
