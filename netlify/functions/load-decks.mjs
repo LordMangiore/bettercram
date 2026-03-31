@@ -100,6 +100,31 @@ export default async function handler(req) {
     }
 
     // === List all decks (summaries, no cards) ===
+
+    // Load collab deck pointers
+    let collabDecks = [];
+    try {
+      const collabPointers = await listDocs(`users/${userId}/collabDecks`);
+      if (collabPointers.length > 0) {
+        const collabResults = await Promise.allSettled(
+          collabPointers.map(async ({ data }) => {
+            const deckMeta = await getDoc(`users/${data.ownerId}/decks/${data.deckId}`);
+            if (!deckMeta) return null;
+            return {
+              id: data.deckId,
+              ...deckMeta,
+              isCollab: true,
+              ownerId: data.ownerId,
+              ownerName: data.deckName, // We store deckName in the pointer
+            };
+          })
+        );
+        collabDecks = collabResults
+          .filter(r => r.status === "fulfilled" && r.value)
+          .map(r => r.value);
+      }
+    } catch {}
+
     // Firestore-first for listing
     let firestoreDecks = [];
     try {
@@ -111,7 +136,7 @@ export default async function handler(req) {
         id,
         ...data,
       }));
-      return Response.json({ decks });
+      return Response.json({ decks, collabDecks });
     }
 
     // Fall back to Blob listing
@@ -125,7 +150,6 @@ export default async function handler(req) {
       try {
         const deck = await store.get(blob.key, { type: "json" });
         if (deck) {
-          // Strip cards from the listing to keep response small
           const { cards, ...summary } = deck;
           const deckSummary = {
             id: blob.key,
@@ -134,7 +158,6 @@ export default async function handler(req) {
           };
           decks.push(deckSummary);
 
-          // Lazy-migrate metadata to Firestore
           migratePromises.push(
             setDoc(`users/${userId}/decks/${blob.key}`, {
               ...summary,
@@ -145,12 +168,11 @@ export default async function handler(req) {
       } catch {}
     }
 
-    // Fire lazy migrations in background (don't block response)
     if (migratePromises.length > 0) {
       Promise.all(migratePromises).catch(() => {});
     }
 
-    return Response.json({ decks });
+    return Response.json({ decks, collabDecks });
   } catch (err) {
     console.error("Load decks error:", err);
     return Response.json({ decks: [] });

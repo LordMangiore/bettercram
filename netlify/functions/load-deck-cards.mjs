@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { getDoc } from "./lib/firestore.mjs";
 
 const PAGE_SIZE = 500;
 
@@ -16,14 +17,25 @@ export default async (req) => {
     const url = new URL(req.url);
     const deckId = url.searchParams.get("deckId");
     const page = parseInt(url.searchParams.get("page") || "0", 10);
+    const ownerIdParam = url.searchParams.get("ownerId");
 
     if (!deckId) {
       return Response.json({ error: "deckId is required" }, { status: 400 });
     }
 
+    // Determine effective owner (for collaborator reads)
+    let effectiveOwner = userId;
+    if (ownerIdParam && ownerIdParam !== userId) {
+      const ownerDeck = await getDoc(`users/${ownerIdParam}/decks/${deckId}`);
+      if (!ownerDeck?.collaborators?.[userId]) {
+        return Response.json({ error: "Not authorized to read this deck" }, { status: 403 });
+      }
+      effectiveOwner = ownerIdParam;
+    }
+
     // Try v2 paginated store first
     const cardStore = getStore("deck-cards");
-    const pageData = await cardStore.get(`${userId}-${deckId}-page-${page}`, { type: "json" });
+    const pageData = await cardStore.get(`${effectiveOwner}-${deckId}-page-${page}`, { type: "json" });
 
     if (pageData) {
       return Response.json({
@@ -34,7 +46,7 @@ export default async (req) => {
     }
 
     // V1 fallback: load full deck and slice
-    const deckStore = getStore(`decks-${userId}`);
+    const deckStore = getStore(`decks-${effectiveOwner}`);
     const deck = await deckStore.get(deckId, { type: "json" });
 
     if (!deck || !deck.cards) {

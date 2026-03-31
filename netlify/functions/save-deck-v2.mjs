@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { setDoc } from "./lib/firestore.mjs";
+import { getDoc, setDoc } from "./lib/firestore.mjs";
 
 const PAGE_SIZE = 500;
 
@@ -14,15 +14,23 @@ export default async (req) => {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { deckId, meta, cards, progress, pageOffset = 0 } = await req.json();
+    const { deckId, meta, cards, progress, pageOffset = 0, ownerId } = await req.json();
     if (!deckId) {
       return Response.json({ error: "deckId is required" }, { status: 400 });
     }
 
+    // Determine effective owner (for collaborator writes)
+    let effectiveOwner = userId;
+    if (ownerId && ownerId !== userId) {
+      const ownerDeck = await getDoc(`users/${ownerId}/decks/${deckId}`);
+      if (!ownerDeck?.collaborators?.[userId]) {
+        return Response.json({ error: "Not authorized to edit this deck" }, { status: 403 });
+      }
+      effectiveOwner = ownerId;
+    }
+
     const totalPages = cards ? Math.ceil(cards.length / PAGE_SIZE) : 0;
 
-    // Metadata for Firestore
-    // Use meta.cardCount if provided (for chunked saves from client)
     const firestoreMeta = {
       ...meta,
       v2: true,
@@ -31,32 +39,29 @@ export default async (req) => {
       updatedAt: new Date().toISOString(),
     };
 
-    // Save meta to Firestore + Blob (dual-write)
-    const deckStore = getStore(`decks-${userId}`);
+    const deckStore = getStore(`decks-${effectiveOwner}`);
     await Promise.all([
-      setDoc(`users/${userId}/decks/${deckId}`, firestoreMeta),
+      setDoc(`users/${effectiveOwner}/decks/${deckId}`, firestoreMeta),
       deckStore.setJSON(deckId, firestoreMeta),
     ]);
 
-    // Save cards in pages of 500 (stays in Blob — deck-cards store)
     if (cards && cards.length > 0) {
       const cardStore = getStore("deck-cards");
 
       for (let i = 0; i < totalPages; i++) {
         const start = i * PAGE_SIZE;
         const pageCards = cards.slice(start, start + PAGE_SIZE);
-        await cardStore.setJSON(`${userId}-${deckId}-page-${pageOffset + i}`, {
+        await cardStore.setJSON(`${effectiveOwner}-${deckId}-page-${pageOffset + i}`, {
           cards: pageCards,
           page: i,
           totalPages,
         });
       }
 
-      // Clean up extra pages if card count decreased (only for non-chunked saves)
       if (pageOffset === 0) {
         let extraPage = totalPages;
         while (true) {
-          const key = `${userId}-${deckId}-page-${extraPage}`;
+          const key = `${effectiveOwner}-${deckId}-page-${extraPage}`;
           const existing = await cardStore.get(key);
           if (!existing) break;
           await cardStore.delete(key);
@@ -65,7 +70,7 @@ export default async (req) => {
       }
     }
 
-    // Save progress to Firestore + Blob (dual-write)
+    // Progress is always per-user (not shared)
     if (progress) {
       const progressData = {
         progress,

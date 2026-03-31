@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { setDoc } from "./lib/firestore.mjs";
+import { getDoc, setDoc } from "./lib/firestore.mjs";
 
 export default async function handler(req) {
   if (req.method !== "POST") {
@@ -10,9 +10,20 @@ export default async function handler(req) {
     const userId = req.headers.get("x-user-id");
     if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { deckId, deck } = await req.json();
+    const { deckId, deck, ownerId } = await req.json();
     if (!deckId || !deck) {
       return Response.json({ error: "deckId and deck required" }, { status: 400 });
+    }
+
+    // Determine the effective owner (for collaborator writes)
+    let effectiveOwner = userId;
+    if (ownerId && ownerId !== userId) {
+      // Verify caller is a collaborator on the owner's deck
+      const ownerDeck = await getDoc(`users/${ownerId}/decks/${deckId}`);
+      if (!ownerDeck?.collaborators?.[userId]) {
+        return Response.json({ error: "Not authorized to edit this deck" }, { status: 403 });
+      }
+      effectiveOwner = ownerId;
     }
 
     // Strip cards for Firestore metadata
@@ -24,9 +35,9 @@ export default async function handler(req) {
     };
 
     // Dual-write: metadata to Firestore, full deck (with cards) to Blob
-    const store = getStore(`decks-${userId}`);
+    const store = getStore(`decks-${effectiveOwner}`);
     await Promise.all([
-      setDoc(`users/${userId}/decks/${deckId}`, firestoreMeta),
+      setDoc(`users/${effectiveOwner}/decks/${deckId}`, firestoreMeta),
       store.setJSON(deckId, deck),
     ]);
 
