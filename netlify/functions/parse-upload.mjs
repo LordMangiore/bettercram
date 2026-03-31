@@ -1,5 +1,3 @@
-import pdf from "pdf-parse/lib/pdf-parse.js";
-
 /**
  * Parse uploaded files (PDF or Anki .apkg) and return content.
  *
@@ -44,6 +42,7 @@ export default async function handler(req) {
     // ── PDF ──
     if (ext === "pdf") {
       try {
+        const pdf = (await import("pdf-parse/lib/pdf-parse.js")).default;
         const data = await pdf(fileBuffer);
         const text = data.text?.trim();
 
