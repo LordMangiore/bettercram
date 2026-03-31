@@ -46,7 +46,7 @@ export default function AboutPage({ onBack, dark }) {
               </div>
             </div>
             <p className={`text-sm leading-relaxed mb-3 ${dark ? "text-gray-400" : "text-gray-500"}`}>
-              Product Owner at CCA Global Partners. Previously led digital transformation at Mecum Auctions for 5 years. Certified ScrumMaster and Scrum Product Owner.
+              Product leader with a background in digital transformation. Certified ScrumMaster and Scrum Product Owner. Builds things that solve real problems.
             </p>
             <p className={`text-xs italic mb-4 ${dark ? "text-gray-600" : "text-gray-400"}`}>
               "My wife asked me to build her an AI flashcard app. I said easy. Anything to not have to do dishes."
@@ -67,7 +67,7 @@ export default function AboutPage({ onBack, dark }) {
               </div>
             </div>
             <p className={`text-sm leading-relaxed mb-3 ${dark ? "text-gray-400" : "text-gray-500"}`}>
-              X-Ray, CT, and Nuclear Medicine Technologist at Mercy. Premed at Washington University in St. Louis, studying for the MCAT. The original BetterCram user.
+              X-Ray, CT, and Nuclear Medicine Technologist. Premed studying for the MCAT. The original BetterCram user.
             </p>
             <p className={`text-xs italic mb-4 ${dark ? "text-gray-600" : "text-gray-400"}`}>
               "I found that my most effective study habits vary depending on what I'm studying for. BetterCram adapts to how I need to learn."
