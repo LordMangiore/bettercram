@@ -92,6 +92,14 @@ export default function VoiceTutorMode({ cards, deckName, progress = {}, session
           ? `\nSTUDY CONTEXT: The student was just studying "${activeCategory}" cards specifically. Focus your questions and discussion on ${activeCategory} topics. They switched to Voice Tutor from a study session on this category${sessionStats ? ` where they reviewed ${sessionStats.reviewed} cards with ${sessionStats.correct} correct and ${sessionStats.again} forgotten` : ""}.`
           : "";
 
+        // Detect returning user
+        let isReturning = false;
+        try {
+          const lastNova = localStorage.getItem("bc-nova-last-session");
+          if (lastNova) isReturning = true;
+          localStorage.setItem("bc-nova-last-session", Date.now().toString());
+        } catch {}
+
         let systemPrompt, firstMsg;
 
         if (card) {
@@ -140,15 +148,39 @@ When you detect confusion that might be a misaligned problem:
 3. When in doubt, ask. It's always better to ask one more question than to teach the wrong thing for five minutes.
 
 PACING — MATCH THE STUDENT, NOT A METHOD:
-The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Read who they are right now, not who the method says they should be.`;
+The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Read who they are right now, not who the method says they should be.
 
-          // Adapt first message based on empathy mode — always leave room for them to redirect
-          if (empathyState.mode === "nurture") {
-            firstMsg = `Hey! I see you're working on ${card.category}. What do you need help with? We can talk through this card, or if you've got something else on your mind, just tell me what's going on.`;
+TOPIC ANCHOR — STAY ON DECK:
+Your primary job is helping this student learn the material in their deck. While you should follow their lead if they have a specific question, don't let the conversation drift into unrelated territory. If you notice the discussion wandering away from the deck's subject matter:
+1. Gently steer back: "That's interesting — but let's get back to ${card.category}. Here's something worth knowing..."
+2. Connect tangents back to the material when possible rather than following them further
+3. If the student is clearly done with the current card, move to another card from the deck rather than free-form chatting
+4. You are a study tutor, not a general conversation partner. Every exchange should move them closer to mastering this material.`;
+
+          // Adapt first message based on empathy mode + returning vs new
+          if (isReturning) {
+            const returningCard = {
+              nurture: [
+                `Welcome back! I see you're on ${card.category}. Want to talk through this one, or something else?`,
+                `Hey again! Working on ${card.category}? What do you need?`,
+              ],
+              challenge: [
+                `You're back — ${card.category} again. Want me to push you on this card or pick something harder?`,
+                `Hey! Ready to go on ${card.category}? This one or something else?`,
+              ],
+              balanced: [
+                `Welcome back! You're in ${card.category}. What do you want to dig into?`,
+                `Hey again! I see ${card.category}. Want to work through this card or hit me with a question?`,
+              ],
+            };
+            const greetings = returningCard[empathyState.mode] || returningCard.balanced;
+            firstMsg = greetings[Math.floor(Math.random() * greetings.length)];
+          } else if (empathyState.mode === "nurture") {
+            firstMsg = `Hey! I'm Nova. I see you're working on ${card.category}. What do you need help with? We can talk through this card, or if you've got something else on your mind, just tell me what's going on.`;
           } else if (empathyState.mode === "challenge") {
-            firstMsg = `Hey! I see you're in ${card.category}. What are we working on? Want me to quiz you on this, or do you have something specific you're stuck on?`;
+            firstMsg = `Hey! I'm Nova. I see you're in ${card.category}. What are we working on? Want me to quiz you on this, or do you have something specific you're stuck on?`;
           } else {
-            firstMsg = `Hey! I see you're studying ${card.category}. What do you want to work on? We can dig into this card, or if there's something else you need help with, I'm all ears.`;
+            firstMsg = `Hey! I'm Nova. I see you're studying ${card.category}. What do you want to work on? We can dig into this card, or if there's something else you need help with, I'm all ears.`;
           }
         } else {
           systemPrompt = `You are Nova, an expert study tutor helping a student with their ${deckName || "study"} deck. Their deck has ${total} cards covering: ${categories}.
@@ -189,13 +221,41 @@ When you detect confusion that might be a misaligned problem:
 3. When in doubt, ask. Always better to ask one more question than to teach the wrong thing for five minutes.
 
 PACING — MATCH THE STUDENT, NOT A METHOD:
-The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them directly. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Match your pacing to who they are right now, not who the method says they should be.`;
+The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them directly. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Match your pacing to who they are right now, not who the method says they should be.
+
+TOPIC ANCHOR — STAY ON DECK:
+Your primary job is helping this student learn the material in their deck covering ${categories}. While you should follow their lead if they have a specific question, don't let the conversation drift into unrelated territory. If you notice the discussion wandering:
+1. Gently steer back: "That's interesting — but let's get back to the material. Here's something worth knowing..."
+2. Connect tangents back to the deck content when possible rather than following them further
+3. When one topic is exhausted, move to another card from the deck rather than free-form chatting
+4. You are a study tutor, not a general conversation partner. Every exchange should move them closer to mastering this material.`;
 
           // Adapt first message based on empathy mode
-          if (empathyState.mode === "nurture") {
+          if (isReturning) {
+            // Returning user — varied, warm, skip the introduction
+            const returningGreetings = {
+              nurture: [
+                `Welcome back! What are we tackling in ${deckName || "your deck"} today?`,
+                `Hey, good to see you again. What do you want to work through?`,
+                `Back at it! What's giving you trouble in ${deckName || "your deck"}?`,
+              ],
+              challenge: [
+                `You're back — ready to go? Quiz or specific question?`,
+                `Hey again. Let's pick up where we left off. What do you want to hit?`,
+                `Welcome back. Want me to throw some hard ones at you from ${deckName || "your deck"}?`,
+              ],
+              balanced: [
+                `Hey, welcome back! What do you want to focus on today?`,
+                `Good to see you again. What are we working on in ${deckName || "your deck"}?`,
+                `Back for more! Quiz, review, or do you have a specific question?`,
+              ],
+            };
+            const greetings = returningGreetings[empathyState.mode] || returningGreetings.balanced;
+            firstMsg = greetings[Math.floor(Math.random() * greetings.length)];
+          } else if (empathyState.mode === "nurture") {
             firstMsg = `Hey! I'm Nova. What do you need help with? We can go through your ${deckName || "deck"} together, or if there's something specific bugging you, just tell me.`;
           } else if (empathyState.mode === "challenge") {
-            firstMsg = `Hey! What are we working on? I can quiz you on ${deckName || "your deck"}, or if you've got a specific problem, throw it at me.`;
+            firstMsg = `Hey! I'm Nova. What are we working on? I can quiz you on ${deckName || "your deck"}, or if you've got a specific problem, throw it at me.`;
           } else {
             firstMsg = `Hey! I'm Nova. What do you want to work on? I can quiz you from your ${deckName || "deck"}, or if you've got a specific question or problem, let's dig into that.`;
           }
