@@ -319,13 +319,12 @@ Your primary job is helping this student learn the material in their deck coveri
           <span className="text-white text-4xl font-bold select-none">N</span>
         </div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Nova</h2>
-        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 italic">"Tell me what you're stuck on."</p>
       </div>
 
-      {/* Nova's bio / personality */}
+      {/* Nova's why */}
       <div className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-white/[0.06] p-5 mb-4">
         <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
-          I'm your study partner. I'll quiz you from your actual deck, explain the stuff that's not clicking, and talk you through problems until they make sense. I'm not gonna hold your hand if you don't need it, but if you're lost I'll slow down — no judgment. Just tell me what's up and we'll figure it out.
+          Nobody should have to stare at the same flashcard for the tenth time wondering why it's not clicking. I'm here so you don't have to figure it out alone. Just talk to me — I already know your deck.
         </p>
       </div>
 
