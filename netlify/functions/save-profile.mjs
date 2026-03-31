@@ -15,8 +15,9 @@ export default async function handler(req) {
     const raw = await req.json();
 
     // Whitelist allowed fields — reject anything else
+    // Username must go through claim-username endpoint for uniqueness enforcement
     const ALLOWED_FIELDS = [
-      "name", "username", "email", "subjects", "familiarity",
+      "name", "email", "subjects", "familiarity",
       "studyStyle", "studyContext", "onboardingComplete", "examDate",
       "picture", "theme", "notificationPrefs",
     ];
@@ -28,8 +29,6 @@ export default async function handler(req) {
     // Validate field types
     if (profile.name && typeof profile.name !== "string") delete profile.name;
     if (profile.name) profile.name = profile.name.slice(0, 100);
-    if (profile.username && typeof profile.username !== "string") delete profile.username;
-    if (profile.username) profile.username = profile.username.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20);
     if (profile.subjects && !Array.isArray(profile.subjects)) delete profile.subjects;
     if (profile.subjects) profile.subjects = profile.subjects.slice(0, 20).map(s => String(s).slice(0, 50));
 

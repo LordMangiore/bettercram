@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { saveProfile, loadProfile } from "../api";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { saveProfile, loadProfile, claimUsername, lookupUser } from "../api";
 
 const SUBJECT_OPTIONS = [
   { id: "mcat", label: "MCAT", icon: "fa-solid fa-stethoscope" },
@@ -70,11 +70,17 @@ export default function Settings({ user, profile: initialProfile, onBack, onProf
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [usernameStatus, setUsernameStatus] = useState(null); // null | "checking" | "available" | "taken" | "invalid" | "saved"
+  const [usernameError, setUsernameError] = useState("");
+  const usernameTimerRef = useRef(null);
+  const savedUsernameRef = useRef(""); // track the original saved username
 
   useEffect(() => {
     if (initialProfile) {
       setName(initialProfile.name || user?.name || "");
       setUsername(initialProfile.username || "");
+      savedUsernameRef.current = initialProfile.username || "";
+      if (initialProfile.username) setUsernameStatus("saved");
       setSubjects(initialProfile.subjects || []);
       setFamiliarity(initialProfile.familiarity || "");
       setStudyStyle(initialProfile.studyStyle || "");
@@ -87,6 +93,8 @@ export default function Settings({ user, profile: initialProfile, onBack, onProf
           if (profile) {
             setName(profile.name || user?.name || "");
             setUsername(profile.username || "");
+            savedUsernameRef.current = profile.username || "";
+            if (profile.username) setUsernameStatus("saved");
             setSubjects(profile.subjects || []);
             setFamiliarity(profile.familiarity || "");
             setStudyStyle(profile.studyStyle || "");
@@ -102,6 +110,34 @@ export default function Settings({ user, profile: initialProfile, onBack, onProf
     }
   }, [initialProfile, user]);
 
+  // Debounced username availability check
+  const checkUsername = useCallback((value) => {
+    if (usernameTimerRef.current) clearTimeout(usernameTimerRef.current);
+    const cleaned = value.replace(/[^a-zA-Z0-9_]/g, "");
+
+    if (!cleaned) { setUsernameStatus(null); setUsernameError(""); return; }
+    if (cleaned.length < 3) { setUsernameStatus("invalid"); setUsernameError("At least 3 characters"); return; }
+    if (cleaned.toLowerCase() === savedUsernameRef.current.toLowerCase()) { setUsernameStatus("saved"); setUsernameError(""); return; }
+
+    setUsernameStatus("checking");
+    setUsernameError("");
+    usernameTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await lookupUser(cleaned);
+        // If we got a user back and it's not us, it's taken
+        if (result.userId) {
+          setUsernameStatus("taken");
+          setUsernameError("Already taken");
+        } else {
+          setUsernameStatus("available");
+        }
+      } catch {
+        // 404 = not found = available
+        setUsernameStatus("available");
+      }
+    }, 400);
+  }, []);
+
   function toggleSubject(id) {
     setSubjects((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
@@ -112,9 +148,23 @@ export default function Settings({ user, profile: initialProfile, onBack, onProf
     setSaving(true);
     setSaved(false);
     try {
+      // Claim username separately (enforces uniqueness)
+      const trimmedUsername = username.trim();
+      if (trimmedUsername && trimmedUsername.toLowerCase() !== savedUsernameRef.current.toLowerCase()) {
+        try {
+          await claimUsername(trimmedUsername);
+          savedUsernameRef.current = trimmedUsername;
+          setUsernameStatus("saved");
+        } catch (e) {
+          setUsernameError(e.message);
+          setUsernameStatus("taken");
+          setSaving(false);
+          return;
+        }
+      }
+
       const profile = {
         name: name.trim(),
-        username: username.trim(),
         email: user?.email || "",
         subjects,
         familiarity: familiarity || null,
@@ -123,7 +173,7 @@ export default function Settings({ user, profile: initialProfile, onBack, onProf
         onboardingComplete: true,
       };
       const { profile: updated } = await saveProfile(profile);
-      if (onProfileUpdate) onProfileUpdate(updated);
+      if (onProfileUpdate) onProfileUpdate({ ...updated, username: trimmedUsername || updated.username });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -171,13 +221,33 @@ export default function Settings({ user, profile: initialProfile, onBack, onProf
             <label className="text-xs font-medium text-gray-400 block mb-1">Username</label>
             <div className="flex items-center gap-2">
               <span className="text-gray-500">@</span>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20))}
-                className="flex-1 bg-white/10 border border-white/20 rounded-lg px-3 py-2 min-h-[44px] text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20);
+                    setUsername(val);
+                    checkUsername(val);
+                  }}
+                  placeholder="pick a username"
+                  className={`w-full bg-white/10 border rounded-lg px-3 py-2 pr-8 min-h-[44px] text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none ${
+                    usernameStatus === "taken" || usernameStatus === "invalid" ? "border-red-500/50" : usernameStatus === "available" ? "border-emerald-500/50" : "border-white/20"
+                  }`}
+                />
+                {usernameStatus && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {usernameStatus === "checking" && <i className="fa-solid fa-spinner fa-spin text-gray-400 text-xs" />}
+                    {usernameStatus === "available" && <i className="fa-solid fa-check text-emerald-400 text-xs" />}
+                    {usernameStatus === "taken" && <i className="fa-solid fa-xmark text-red-400 text-xs" />}
+                    {usernameStatus === "invalid" && <i className="fa-solid fa-xmark text-red-400 text-xs" />}
+                    {usernameStatus === "saved" && <i className="fa-solid fa-check text-indigo-400 text-xs" />}
+                  </span>
+                )}
+              </div>
             </div>
+            {usernameError && <p className="text-xs text-red-400 mt-1 pl-6">{usernameError}</p>}
+            {usernameStatus === "available" && <p className="text-xs text-emerald-400 mt-1 pl-6">Available!</p>}
           </div>
 
           <div>

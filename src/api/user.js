@@ -20,6 +20,24 @@ export async function loadProfile() {
   return res.json();
 }
 
+export async function claimUsername(username) {
+  const res = await fetch(`${API_BASE}/claim-username`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ username }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to claim username");
+  return data;
+}
+
+export async function lookupUser(query) {
+  const res = await fetch(`${API_BASE}/lookup-user?q=${encodeURIComponent(query)}`, {
+    headers: authHeaders(),
+  });
+  return res.json();
+}
+
 export async function resetAccount() {
   const res = await fetch(`${API_BASE}/reset-account`, {
     method: "POST",
