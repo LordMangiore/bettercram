@@ -4,6 +4,7 @@ import { parseAnkiFile, uploadAnkiMedia, resolveCardMedia } from "../lib/ankiPar
 import SuggestEditModal from "./SuggestEditModal";
 import SuggestionPanel from "./SuggestionPanel";
 import DeckCardMenu from "./deck-library/DeckCardMenu";
+import CollaboratorModal from "./CollaboratorModal";
 
 const COLORS = [
   "from-indigo-500 to-purple-600",
@@ -76,6 +77,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
   const [confirmRegenDeckId, setConfirmRegenDeckId] = useState(null);
   const [confirmDeleteDeckId, setConfirmDeleteDeckId] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [collabModal, setCollabModal] = useState(null); // { deckId, deckName }
   const [menuOpenDeckId, setMenuOpenDeckId] = useState(null);
   const [renamingDeckId, setRenamingDeckId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -390,6 +392,16 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                 onReviewSuggestions={() => setSuggestionPanel({ publicDeckId: deck.isReference ? deck.subscribedTo : `${user?.id}-${deck.id}`, deckName: deck.name })}
                 suggestionCount={pendingSuggestions}
                 onDelete={() => setConfirmDeleteDeckId(deck.id)}
+                onCollaborators={() => setCollabModal({ deckId: deck.id, deckName: deck.name })}
+                onLeaveDeck={deck.isCollab ? () => {
+                  if (confirm(`Leave "${deck.name}"? You'll lose access to this deck.`)) {
+                    import("../api").then(({ manageCollaborators }) => {
+                      manageCollaborators(deck.id, "remove", user?.id)
+                        .then(() => onRefreshDecks())
+                        .catch(err => alert("Failed to leave: " + err.message));
+                    });
+                  }
+                } : undefined}
               />
             </div>
           </div>
@@ -410,11 +422,16 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
             )}
           </div>
           {/* Status badges */}
-          {(deck.isPublic || deck.isReference || deck.isClone) && (
+          {(deck.isPublic || deck.isReference || deck.isClone || deck.isCollab) && (
             <div className="flex gap-1.5 mt-2">
               {deck.isPublic && (
                 <span className="inline-flex items-center px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-medium rounded-full">
                   <i className="fa-solid fa-globe mr-1" />Shared
+                </span>
+              )}
+              {deck.isCollab && (
+                <span className="inline-flex items-center px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-medium rounded-full">
+                  <i className="fa-solid fa-user-group mr-1" />Collab
                 </span>
               )}
               {deck.isReference && (
@@ -1169,6 +1186,15 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
         publicDeckId={suggestionPanel?.publicDeckId}
         deckName={suggestionPanel?.deckName}
       />
+
+      {/* Collaborator modal */}
+      {collabModal && (
+        <CollaboratorModal
+          deckId={collabModal.deckId}
+          deckName={collabModal.deckName}
+          onClose={() => setCollabModal(null)}
+        />
+      )}
     </div>
   );
 }

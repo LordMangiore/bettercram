@@ -308,6 +308,18 @@ export default function App() {
           // Fallback to API (triggers lazy migration from Blobs)
           const res = await loadDecks();
           d = res.decks;
+          // Merge collab decks if any
+          if (res.collabDecks?.length > 0) {
+            d = [...(d || []), ...res.collabDecks];
+          }
+        } else {
+          // Also load collab decks via API (Firestore direct can't see other users' decks)
+          try {
+            const res = await loadDecks();
+            if (res.collabDecks?.length > 0) {
+              d = [...d, ...res.collabDecks];
+            }
+          } catch {}
         }
 
         if (d && d.length > 0) {
@@ -384,6 +396,33 @@ export default function App() {
       if (unsubNotifs) unsubNotifs();
     };
   }, [user]);
+
+  // Handle invite link: ?invite={token}
+  useEffect(() => {
+    if (!user?.id) return;
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get("invite");
+    if (!inviteToken) return;
+
+    // Clear the URL param
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, "", cleanUrl);
+
+    // Accept the invite
+    import("./api").then(({ acceptInvite }) => {
+      acceptInvite(inviteToken)
+        .then((result) => {
+          if (result.success) {
+            alert(`You've been added as a collaborator on "${result.deckName}"!`);
+            // Refresh decks to show the new collab deck
+            loadDecks().then(({ decks: d }) => setDecks(d || [])).catch(() => {});
+          }
+        })
+        .catch((err) => {
+          alert(err.message || "Failed to accept invite");
+        });
+    });
+  }, [user?.id]);
 
   // Deck management
   // Shared helper: chunk content and batch-generate cards

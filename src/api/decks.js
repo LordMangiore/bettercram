@@ -65,6 +65,40 @@ export async function loadDeckCards(deckId, page = 0) {
   return res.json();
 }
 
+// Collaboration
+export async function manageCollaborators(deckId, action, targetUserId) {
+  const res = await fetch(`${API_BASE}/manage-collaborators`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ deckId, action, targetUserId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to manage collaborators");
+  return data;
+}
+
+export async function createInviteLink(deckId) {
+  const res = await fetch(`${API_BASE}/manage-invite-link`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ action: "create", deckId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to create invite link");
+  return data;
+}
+
+export async function acceptInvite(token) {
+  const res = await fetch(`${API_BASE}/accept-invite`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to accept invite");
+  return data;
+}
+
 export async function loadAllDeckCards(deckId) {
   // Load pages until we get an empty result — don't rely on totalPages
   // from individual page blobs (may be stale from chunked saves)

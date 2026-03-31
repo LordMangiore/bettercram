@@ -5,7 +5,7 @@ export default function DeckCardMenu({
   onRename, onManageCards, onExport, onShare, onAssignGroup,
   onRegenerate, onAddMore, onGenerateFromDoc,
   onSuggestCard, onReviewSuggestions, suggestionCount,
-  onDelete, onOpenChange,
+  onDelete, onOpenChange, onCollaborators, onLeaveDeck,
 }) {
   const [open, setOpen] = useState(false);
 
@@ -112,6 +112,20 @@ export default function DeckCardMenu({
               )}
             </>
           )}
+
+          {/* Collaborators — for owned decks */}
+          {!isReference && !deck.isCollab && onCollaborators && menuItem(
+            "Collaborators",
+            "fa-user-group",
+            () => { setOpenAndNotify(false); onCollaborators(); },
+            "text-indigo-600 dark:text-indigo-400",
+            deck.collaborators && Object.keys(deck.collaborators).length > 0
+              ? <span className="ml-auto text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded-full">{Object.keys(deck.collaborators).length}</span>
+              : null
+          )}
+
+          {/* Leave — for collab decks */}
+          {deck.isCollab && onLeaveDeck && menuItem("Leave Deck", "fa-right-from-bracket", () => { setOpenAndNotify(false); onLeaveDeck(); }, "text-orange-600 dark:text-orange-400")}
 
           {/* Export */}
           {hasCards && menuItem("Export", "fa-download", () => { setOpenAndNotify(false); onExport(); })}
