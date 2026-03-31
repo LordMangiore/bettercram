@@ -271,6 +271,9 @@ Your primary job is helping this student learn the material in their deck coveri
           },
         };
 
+        console.log("Nova isReturning:", isReturning, "| mode:", empathyState.mode);
+        console.log("Nova firstMsg:", firstMsg);
+
         await conversation.startSession({
           agentId: AGENT_ID,
           ...overrides,
