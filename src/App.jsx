@@ -1249,6 +1249,10 @@ export default function App() {
         setShowDeleteAccountModal={setShowDeleteAccountModal}
         login={login}
         logout={logout}
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        showPricing={showPricing}
       />
 
       <Suspense fallback={<LazyFallback />}>
@@ -1266,23 +1270,7 @@ export default function App() {
           />
         ) : (
         <>
-        {/* Desktop tab bar — hidden on mobile (shown in bottom nav instead) */}
-        <div className="hidden sm:flex gap-2 justify-center">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center gap-2 ${
-                activeTab === tab.id
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
-              }`}
-            >
-              <i className={`${tab.icon}`} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* Desktop tabs now live in the header (AppHeader) */}
 
         {/* Sub-navigation within active tab */}
         {!["library", "flip", "manage", "planner"].includes(mode) && (() => {
@@ -1301,7 +1289,7 @@ export default function App() {
         })()}
 
         {/* Category filter — only in study modes, not library/manage/planner */}
-        {!["library", "manage", "planner"].includes(mode) && !showPricing && (
+        {!["library", "manage", "planner", "voice"].includes(mode) && !showPricing && (
           <div className="relative">
             <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none" />
             <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none" />

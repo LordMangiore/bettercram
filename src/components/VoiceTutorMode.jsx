@@ -36,14 +36,6 @@ export default function VoiceTutorMode({ cards, deckName, progress = {}, session
     },
   });
 
-  // Derive deck stats
-  const deckStats = useMemo(() => {
-    const cats = [...new Set(cards.map(c => c.category).filter(Boolean))];
-    const studied = Object.keys(progress).length;
-    const masteredCount = Object.values(progress).filter(p => p.stability > 10).length;
-    return { categories: cats, studied, mastered: masteredCount };
-  }, [cards, progress]);
-
   const startConversation = useCallback(
     async () => {
       try {
@@ -232,39 +224,29 @@ Your primary job is helping this student learn the material in their deck coveri
     };
   }, []);
 
-  // ===== CONNECTING — Full-screen calling animation =====
+  // Derive deck stats for display
+  const deckCategories = useMemo(() => {
+    return [...new Set(cards.map(c => c.category).filter(Boolean))];
+  }, [cards]);
+
+  // ===== CONNECTING =====
   if (status === "connecting") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
         <div className="flex flex-col items-center gap-8 text-center">
           <div className="relative w-32 h-32 flex items-center justify-center">
-            <div
-              className="absolute inset-0 rounded-full border-2 border-indigo-400/60 dark:border-indigo-500/60"
-              style={{ animation: "nova-ring 1.5s ease-out infinite" }}
-            />
-            <div
-              className="absolute inset-0 rounded-full border-2 border-indigo-300/40 dark:border-indigo-600/40"
-              style={{ animation: "nova-ring-delay 1.5s ease-out 0.4s infinite" }}
-            />
-            <div
-              className="absolute inset-0 rounded-full border border-indigo-200/30 dark:border-indigo-700/30"
-              style={{ animation: "nova-ring-delay 1.5s ease-out 0.8s infinite" }}
-            />
-            <div
-              className="relative w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center z-10"
-              style={{ animation: "nova-glow 2s ease-in-out infinite" }}
-            >
-              <i className="fa-solid fa-phone text-white text-4xl" />
+            <div className="absolute inset-0 rounded-full border-2 border-indigo-400/60" style={{ animation: "nova-ring 1.5s ease-out infinite" }} />
+            <div className="absolute inset-0 rounded-full border-2 border-indigo-300/40" style={{ animation: "nova-ring-delay 1.5s ease-out 0.4s infinite" }} />
+            <div className="absolute inset-0 rounded-full border border-indigo-200/30" style={{ animation: "nova-ring-delay 1.5s ease-out 0.8s infinite" }} />
+            <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center z-10" style={{ animation: "nova-glow 2s ease-in-out infinite" }}>
+              <span className="text-white text-4xl font-bold">N</span>
             </div>
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Calling Nova...</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Setting up your study session</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Getting your session ready</p>
           </div>
-          <button
-            onClick={() => setStatus("idle")}
-            className="px-5 py-2 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          >
+          <button onClick={() => setStatus("idle")} className="px-5 py-2 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             Cancel
           </button>
         </div>
@@ -277,17 +259,14 @@ Your primary job is helping this student learn the material in their deck coveri
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="w-28 h-28 rounded-full bg-red-500/10 dark:bg-red-500/10 flex items-center justify-center">
-            <i className="fa-solid fa-phone-slash text-red-500 dark:text-red-400 text-3xl" />
+          <div className="w-28 h-28 rounded-full bg-red-500/10 flex items-center justify-center">
+            <i className="fa-solid fa-phone-slash text-red-500 text-3xl" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Couldn't connect</h2>
             <p className="text-sm text-red-500 dark:text-red-400 mt-1 max-w-xs">{errorMsg}</p>
           </div>
-          <button
-            onClick={() => { setErrorMsg(""); setStatus("idle"); }}
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors"
-          >
+          <button onClick={() => { setErrorMsg(""); setStatus("idle"); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">
             Try again
           </button>
         </div>
@@ -295,56 +274,34 @@ Your primary job is helping this student learn the material in their deck coveri
     );
   }
 
-  // ===== CONNECTED — Active call =====
+  // ===== CONNECTED =====
   if (status === "connected") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
         <div className="flex flex-col items-center gap-8 text-center">
-          {/* Visualizer orb */}
           <div className="relative w-36 h-36 flex items-center justify-center">
             {conversation.isSpeaking && (
               <>
-                <div
-                  className="absolute inset-0 rounded-full border-2 border-indigo-400/50 dark:border-indigo-500/50"
-                  style={{ animation: "nova-ring 1.8s ease-out infinite" }}
-                />
-                <div
-                  className="absolute inset-0 rounded-full border border-indigo-300/30 dark:border-indigo-600/30"
-                  style={{ animation: "nova-ring-delay 1.8s ease-out 0.4s infinite" }}
-                />
+                <div className="absolute inset-0 rounded-full border-2 border-indigo-400/50" style={{ animation: "nova-ring 1.8s ease-out infinite" }} />
+                <div className="absolute inset-0 rounded-full border border-indigo-300/30" style={{ animation: "nova-ring-delay 1.8s ease-out 0.4s infinite" }} />
               </>
             )}
             <div
               className={`relative w-28 h-28 rounded-full flex items-center justify-center z-10 transition-all duration-500 ${
-                conversation.isSpeaking
-                  ? "bg-gradient-to-br from-indigo-500 to-violet-600 scale-100"
-                  : "bg-gradient-to-br from-emerald-500 to-green-600 scale-95"
+                conversation.isSpeaking ? "bg-gradient-to-br from-indigo-500 to-violet-600 scale-100" : "bg-gradient-to-br from-emerald-500 to-green-600 scale-95"
               }`}
               style={conversation.isSpeaking ? { animation: "nova-glow 2s ease-in-out infinite" } : undefined}
             >
-              <i
-                className={`text-white text-3xl transition-all duration-300 ${
-                  conversation.isSpeaking ? "fa-solid fa-volume-high" : "fa-solid fa-microphone"
-                }`}
-              />
+              <i className={`text-white text-3xl transition-all duration-300 ${conversation.isSpeaking ? "fa-solid fa-volume-high" : "fa-solid fa-microphone"}`} />
             </div>
           </div>
-
-          {/* Status */}
           <div>
             <p className="text-base font-semibold text-gray-800 dark:text-gray-200">
               {conversation.isSpeaking ? "Nova is speaking..." : "Listening..."}
             </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              {deckName || "Study session"}
-            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{deckName || "Study session"}</p>
           </div>
-
-          {/* End call */}
-          <button
-            onClick={stopConversation}
-            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 active:scale-90 transition-all flex items-center justify-center shadow-lg shadow-red-500/20"
-          >
+          <button onClick={stopConversation} className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 active:scale-90 transition-all flex items-center justify-center shadow-lg shadow-red-500/20">
             <i className="fa-solid fa-phone-slash text-white text-xl" />
           </button>
         </div>
@@ -352,84 +309,67 @@ Your primary job is helping this student learn the material in their deck coveri
     );
   }
 
-  // ===== IDLE — Nova profile page =====
+  // ===== IDLE — Nova's profile page =====
   return (
-    <div className="max-w-lg mx-auto px-4 pt-6 pb-12">
+    <div className="max-w-lg mx-auto px-4 pt-4 pb-12">
 
-      {/* Nova profile header */}
-      <div className="flex flex-col items-center text-center mb-8">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/20">
-          <i className="fa-solid fa-headset text-white text-2xl" />
+      {/* Nova avatar + identity */}
+      <div className="flex flex-col items-center text-center mb-6">
+        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/25">
+          <span className="text-white text-4xl font-bold select-none">N</span>
         </div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Nova</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your AI study tutor</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 italic">"Tell me what you're stuck on."</p>
       </div>
 
-      {/* Deck context card */}
-      <div className="bg-white/60 dark:bg-white/5 backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-white/10 p-5 mb-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/15 flex items-center justify-center">
-            <i className="fa-solid fa-layer-group text-indigo-600 dark:text-indigo-400 text-sm" />
+      {/* Nova's bio / personality */}
+      <div className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-white/[0.06] p-5 mb-4">
+        <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
+          I'm your voice study partner. I adapt to how you learn — if you need hand-holding, I'll walk you through it. If you just need a quick answer, I won't waste your time with twenty questions. I quiz from your actual cards, not made-up stuff, and I'll push back when you're guessing instead of thinking.
+        </p>
+      </div>
+
+      {/* Teaching style traits */}
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
+        {[
+          { icon: "fa-bolt", label: "Adapts to your pace", bg: "from-amber-500/10 to-orange-500/10 dark:from-amber-500/10 dark:to-orange-500/10", color: "text-amber-600 dark:text-amber-400" },
+          { icon: "fa-ear-listen", label: "Listens first, teaches second", bg: "from-emerald-500/10 to-green-500/10 dark:from-emerald-500/10 dark:to-green-500/10", color: "text-emerald-600 dark:text-emerald-400" },
+          { icon: "fa-fire", label: "Pushes you when you're ready", bg: "from-rose-500/10 to-pink-500/10 dark:from-rose-500/10 dark:to-pink-500/10", color: "text-rose-500 dark:text-rose-400" },
+          { icon: "fa-layer-group", label: "Uses your real cards", bg: "from-indigo-500/10 to-violet-500/10 dark:from-indigo-500/10 dark:to-violet-500/10", color: "text-indigo-600 dark:text-indigo-400" },
+        ].map(t => (
+          <div key={t.label} className={`bg-gradient-to-br ${t.bg} rounded-xl p-3.5 border border-gray-200/40 dark:border-white/[0.04]`}>
+            <i className={`fa-solid ${t.icon} ${t.color} text-sm mb-2 block`} />
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 leading-snug">{t.label}</p>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{deckName || "Your Deck"}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{cards.length} cards loaded</p>
-          </div>
+        ))}
+      </div>
+
+      {/* Current deck context — compact */}
+      <div className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-white/[0.06] px-5 py-4 mb-6 flex items-center gap-4">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 flex items-center justify-center flex-shrink-0">
+          <i className="fa-solid fa-layer-group text-indigo-500 dark:text-indigo-400 text-sm" />
         </div>
-        {deckStats.categories.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {deckStats.categories.slice(0, 6).map(cat => (
-              <span
-                key={cat}
-                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-gray-400"
-              >
-                {cat}
-              </span>
-            ))}
-            {deckStats.categories.length > 6 && (
-              <span className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-gray-500">
-                +{deckStats.categories.length - 6} more
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* What Nova can do */}
-      <div className="bg-white/60 dark:bg-white/5 backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-white/10 p-5 mb-8">
-        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">What Nova can do</p>
-        <div className="space-y-3">
-          {[
-            { icon: "fa-brain", label: "Quiz you from your deck", color: "text-violet-500" },
-            { icon: "fa-lightbulb", label: "Explain tough concepts", color: "text-amber-500" },
-            { icon: "fa-comments", label: "Talk through problems step-by-step", color: "text-emerald-500" },
-            { icon: "fa-bullseye", label: "Focus on your weak areas", color: "text-rose-500" },
-          ].map(item => (
-            <div key={item.label} className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/8 flex items-center justify-center flex-shrink-0">
-                <i className={`fa-solid ${item.icon} ${item.color} text-xs`} />
-              </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300">{item.label}</p>
-            </div>
-          ))}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{deckName || "Your Deck"}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {cards.length} cards
+            {deckCategories.length > 0 && <span> across {deckCategories.length} {deckCategories.length === 1 ? "topic" : "topics"}</span>}
+          </p>
         </div>
       </div>
 
       {/* Call button */}
-      <div className="flex flex-col items-center gap-3">
-        <button
-          onClick={startConversation}
-          className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.98] text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-3"
-        >
-          <i className="fa-solid fa-phone" />
-          Start Study Session
-        </button>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500">Voice conversation powered by AI</p>
-      </div>
+      <button
+        onClick={startConversation}
+        className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-[0.98] text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-3"
+      >
+        <i className="fa-solid fa-phone" />
+        Talk to Nova
+      </button>
 
       {/* Error */}
       {errorMsg && (
-        <div className="mt-5 bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
+        <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
           <p className="text-red-600 dark:text-red-400 text-sm">{errorMsg}</p>
           <button onClick={() => setErrorMsg("")} className="mt-2 text-xs text-red-500 underline">Dismiss</button>
         </div>

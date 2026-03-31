@@ -27,10 +27,15 @@ export default function AppHeader({
   setShowDeleteAccountModal,
   login,
   logout,
+  tabs,
+  activeTab,
+  onTabChange,
+  showPricing,
 }) {
   return (
     <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        {/* Left — logo + deck name */}
         <div
           onClick={() => { setMode("study"); setShowPricing(false); window.scrollTo(0, 0); }}
           className="cursor-pointer hover:opacity-80 transition-opacity min-w-0"
@@ -45,6 +50,28 @@ export default function AppHeader({
             </p>
           )}
         </div>
+
+        {/* Center — tabs (desktop/tablet only) */}
+        {tabs && !showPricing && (
+          <div className="hidden sm:flex items-center gap-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => onTabChange(tab.id)}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+                  activeTab === tab.id
+                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/20"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                }`}
+              >
+                <i className={tab.icon} />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Right — actions */}
         <div className="flex items-center gap-2">
           {/* Search toggle */}
           <button
