@@ -325,23 +325,8 @@ Your primary job is helping this student learn the material in their deck coveri
       {/* Nova's bio / personality */}
       <div className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-white/[0.06] p-5 mb-4">
         <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
-          I'm your voice study partner. I adapt to how you learn — if you need hand-holding, I'll walk you through it. If you just need a quick answer, I won't waste your time with twenty questions. I quiz from your actual cards, not made-up stuff, and I'll push back when you're guessing instead of thinking.
+          I'm your study partner. I'll quiz you from your actual deck, explain the stuff that's not clicking, and talk you through problems until they make sense. I'm not gonna hold your hand if you don't need it, but if you're lost I'll slow down — no judgment. Just tell me what's up and we'll figure it out.
         </p>
-      </div>
-
-      {/* Teaching style traits */}
-      <div className="grid grid-cols-2 gap-2.5 mb-4">
-        {[
-          { icon: "fa-bolt", label: "Adapts to your pace", bg: "from-amber-500/10 to-orange-500/10 dark:from-amber-500/10 dark:to-orange-500/10", color: "text-amber-600 dark:text-amber-400" },
-          { icon: "fa-ear-listen", label: "Listens first, teaches second", bg: "from-emerald-500/10 to-green-500/10 dark:from-emerald-500/10 dark:to-green-500/10", color: "text-emerald-600 dark:text-emerald-400" },
-          { icon: "fa-fire", label: "Pushes you when you're ready", bg: "from-rose-500/10 to-pink-500/10 dark:from-rose-500/10 dark:to-pink-500/10", color: "text-rose-500 dark:text-rose-400" },
-          { icon: "fa-layer-group", label: "Uses your real cards", bg: "from-indigo-500/10 to-violet-500/10 dark:from-indigo-500/10 dark:to-violet-500/10", color: "text-indigo-600 dark:text-indigo-400" },
-        ].map(t => (
-          <div key={t.label} className={`bg-gradient-to-br ${t.bg} rounded-xl p-3.5 border border-gray-200/40 dark:border-white/[0.04]`}>
-            <i className={`fa-solid ${t.icon} ${t.color} text-sm mb-2 block`} />
-            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 leading-snug">{t.label}</p>
-          </div>
-        ))}
       </div>
 
       {/* Current deck context — compact */}
