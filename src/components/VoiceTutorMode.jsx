@@ -20,8 +20,10 @@ export default function VoiceTutorMode({ cards, deckName, progress = {}, session
   const [currentCard, setCurrentCard] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const conversationRef = useRef(null);
+  const [sessionOverrides, setSessionOverrides] = useState(null);
 
   const conversation = useConversation({
+    overrides: sessionOverrides || undefined,
     onConnect: () => {
       setStatus("connected");
       setErrorMsg("");
@@ -273,6 +275,12 @@ Your primary job is helping this student learn the material in their deck coveri
 
         console.log("Nova isReturning:", isReturning, "| mode:", empathyState.mode);
         console.log("Nova firstMsg:", firstMsg);
+
+        // Set overrides on the hook before starting (required for @11labs/react@0.2.x)
+        setSessionOverrides(overrides);
+
+        // Small delay to let React re-render with new overrides
+        await new Promise(r => setTimeout(r, 50));
 
         await conversation.startSession({
           agentId: AGENT_ID,
