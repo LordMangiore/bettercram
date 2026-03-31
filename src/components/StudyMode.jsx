@@ -584,24 +584,39 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
   }
 
   if (!currentCard) {
+    // Count new (unseen) cards to show a helpful message
+    const unseenCount = cards.filter(c => {
+      const p = progress[cardKey(c)];
+      return !p || !p.fsrs;
+    }).length;
+    const scheduledCount = cards.filter(c => {
+      const p = progress[cardKey(c)];
+      return p?.fsrs && getFSRSCard(p).due > new Date();
+    }).length;
+
     return (
       <div className="text-center py-8">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900/40 mb-4">
-          <i className="fa-solid fa-check-double text-3xl text-indigo-600 dark:text-indigo-400" />
+          <i className={`fa-solid ${unseenCount > 0 ? "fa-layer-group" : "fa-check-double"} text-3xl text-indigo-600 dark:text-indigo-400`} />
         </div>
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
-          All caught up!
+          {unseenCount > 0 ? "No reviews due" : "All caught up!"}
         </h2>
         <p className="text-gray-500 dark:text-gray-400 mb-6">
-          No cards are due right now. Want to study ahead?
+          {unseenCount > 0
+            ? `You have ${unseenCount.toLocaleString()} new card${unseenCount === 1 ? "" : "s"} to learn${scheduledCount > 0 ? ` and ${scheduledCount.toLocaleString()} scheduled for later` : ""}.`
+            : scheduledCount > 0
+              ? `${scheduledCount.toLocaleString()} card${scheduledCount === 1 ? "" : "s"} scheduled for later. Want to study ahead?`
+              : "No cards are due right now. Want to study ahead?"
+          }
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             onClick={startStudyAhead}
             className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors"
           >
-            <i className="fa-solid fa-forward mr-2" />
-            Study Ahead
+            <i className={`fa-solid ${unseenCount > 0 ? "fa-play" : "fa-forward"} mr-2`} />
+            {unseenCount > 0 ? "Start Learning" : "Study Ahead"}
           </button>
           <button
             onClick={resetSession}
