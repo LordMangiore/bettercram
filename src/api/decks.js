@@ -66,16 +66,30 @@ export async function loadDeckCards(deckId, page = 0) {
 }
 
 export async function loadAllDeckCards(deckId) {
-  const first = await loadDeckCards(deckId, 0);
-  const allCards = [...first.cards];
-  if (first.totalPages > 1) {
-    const remaining = await Promise.all(
-      Array.from({ length: first.totalPages - 1 }, (_, i) => loadDeckCards(deckId, i + 1))
+  // Load pages until we get an empty result — don't rely on totalPages
+  // from individual page blobs (may be stale from chunked saves)
+  const allCards = [];
+  const PARALLEL = 5;
+  let page = 0;
+  let keepGoing = true;
+
+  while (keepGoing) {
+    const batch = await Promise.all(
+      Array.from({ length: PARALLEL }, (_, i) =>
+        loadDeckCards(deckId, page + i).catch(() => ({ cards: [] }))
+      )
     );
-    for (const page of remaining) {
-      allCards.push(...page.cards);
+    for (const result of batch) {
+      if (result.cards && result.cards.length > 0) {
+        allCards.push(...result.cards);
+      } else {
+        keepGoing = false;
+        break;
+      }
     }
+    page += PARALLEL;
   }
+
   return allCards;
 }
 
