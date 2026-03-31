@@ -635,11 +635,40 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                         // Images: OCR handwritten/photo notes via Claude Vision
                         const imageFiles = files.filter(f => imageExts.includes(f.name.toLowerCase().split(".").pop()));
                         setUploadParsing(true);
+
+                        // Helper: resize image to fit within max dimensions (saves bandwidth + avoids payload limits)
+                        async function resizeImage(file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) {
+                          return new Promise((resolve) => {
+                            const img = new Image();
+                            img.onload = () => {
+                              let { width, height } = img;
+                              if (width <= maxWidth && height <= maxHeight && file.size < 1024 * 1024) {
+                                resolve(file); // already small enough
+                                return;
+                              }
+                              const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+                              width = Math.round(width * ratio);
+                              height = Math.round(height * ratio);
+                              const canvas = document.createElement("canvas");
+                              canvas.width = width;
+                              canvas.height = height;
+                              const ctx = canvas.getContext("2d");
+                              ctx.drawImage(img, 0, 0, width, height);
+                              canvas.toBlob((blob) => {
+                                resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+                              }, "image/jpeg", quality);
+                            };
+                            img.onerror = () => resolve(file); // fallback to original
+                            img.src = URL.createObjectURL(file);
+                          });
+                        }
+
                         try {
                           let combinedText = "";
                           for (let i = 0; i < imageFiles.length; i++) {
                             setUploadStatus(`Reading ${imageFiles.length > 1 ? `page ${i + 1}/${imageFiles.length}` : "image"}...`);
-                            const result = await parseUploadedFile(imageFiles[i]);
+                            const resized = await resizeImage(imageFiles[i]);
+                            const result = await parseUploadedFile(resized);
                             if (result.content) {
                               combinedText += (combinedText ? "\n\n---\n\n" : "") + result.content;
                             }
