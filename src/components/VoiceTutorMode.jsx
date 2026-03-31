@@ -74,9 +74,10 @@ export default function VoiceTutorMode({ cards, deckName, deckId, userId, progre
           : "";
 
         let isReturning = false;
+        let localUserId = userId; // prefer prop
         try {
-          const userId = JSON.parse(localStorage.getItem("mcat-user"))?.id;
-          const key = userId ? `bc-nova-last-session-${userId}` : "bc-nova-last-session";
+          if (!localUserId) localUserId = JSON.parse(localStorage.getItem("mcat-user"))?.id;
+          const key = localUserId ? `bc-nova-last-session-${localUserId}` : "bc-nova-last-session";
           const lastNova = localStorage.getItem(key);
           if (lastNova) isReturning = true;
           localStorage.setItem(key, Date.now().toString());
@@ -135,19 +136,20 @@ BEHAVIOR:
             prompt: { prompt: systemPrompt },
             firstMessage: firstMsg,
           },
-          dynamicVariables: {
-            deck_name: deckName || "your study deck",
-            userId: userId || "",
-            deckId: deckId || "",
-          },
         };
 
         console.log("Nova isReturning:", isReturning, "| mode:", empathyState.mode);
         console.log("Nova firstMsg:", firstMsg);
+        console.log("Nova dynamicVariables:", { userId: localUserId, deckId });
 
         await conversation.startSession({
           agentId: AGENT_ID,
           overrides,
+          dynamicVariables: {
+            deck_name: deckName || "your study deck",
+            userId: localUserId || "unknown",
+            deckId: deckId || "unknown",
+          },
         });
       } catch (error) {
         console.error("Failed to start conversation:", error);
