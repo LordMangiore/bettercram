@@ -782,10 +782,10 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
           {customGroups.map((group) => {
             const isCollapsed = collapsedGroups[group.id];
             return (
-              <div key={group.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div key={group.id} className="rounded-2xl border border-gray-200 dark:border-gray-700">
                 <div
                   onClick={() => toggleGroup(group.id)}
-                  className="bg-gray-50 dark:bg-gray-800/80 px-5 py-4 cursor-pointer select-none transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="bg-gray-50 dark:bg-gray-800/80 px-5 py-4 cursor-pointer select-none transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 rounded-t-2xl"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
@@ -851,11 +851,11 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
             const dateLabel = formatDate(test.examDate);
 
             return (
-              <div key={test.id} className={`rounded-2xl border ${tc.border} overflow-hidden`}>
+              <div key={test.id} className={`rounded-2xl border ${tc.border}`}>
                 {/* Group header */}
                 <div
                   onClick={() => toggleGroup(test.id)}
-                  className={`${tc.light} px-5 py-4 cursor-pointer select-none transition-colors hover:brightness-95`}
+                  className={`${tc.light} px-5 py-4 cursor-pointer select-none transition-colors hover:brightness-95 rounded-t-2xl`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
