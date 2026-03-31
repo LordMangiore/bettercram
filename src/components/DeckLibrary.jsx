@@ -330,12 +330,12 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
       <div
         key={deck.id}
         onClick={() => onSelectDeck(deck.id)}
-        className={`relative rounded-2xl overflow-hidden cursor-pointer hover:scale-[1.02] transition-all ${
+        className={`relative rounded-2xl cursor-pointer hover:scale-[1.02] transition-all ${
           isActive ? "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900" : ""
         }`}
       >
         {/* Gradient header — clean: name + 3-dot menu only */}
-        <div className={`bg-gradient-to-br ${getColor(colorIndex)} p-5`}>
+        <div className={`bg-gradient-to-br ${getColor(colorIndex)} p-5 rounded-t-2xl`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               {renamingDeckId === deck.id ? (
