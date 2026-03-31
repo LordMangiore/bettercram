@@ -5,9 +5,14 @@ export default function DeckCardMenu({
   onRename, onManageCards, onExport, onShare, onAssignGroup,
   onRegenerate, onAddMore, onGenerateFromDoc,
   onSuggestCard, onReviewSuggestions, suggestionCount,
-  onDelete,
+  onDelete, onOpenChange,
 }) {
   const [open, setOpen] = useState(false);
+
+  function setOpenAndNotify(val) {
+    setOpen(val);
+    onOpenChange?.(val);
+  }
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [showGroupList, setShowGroupList] = useState(false);
@@ -18,7 +23,7 @@ export default function DeckCardMenu({
     if (!open) return;
     function handleClick(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setOpen(false);
+        setOpenAndNotify(false);
         setConfirmDelete(false);
         setConfirmRegen(false);
         setShowGroupList(false);
@@ -55,7 +60,7 @@ export default function DeckCardMenu({
     <div ref={menuRef} className="relative">
       {/* 3-dot trigger */}
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        onClick={(e) => { e.stopPropagation(); setOpenAndNotify(!open); }}
         className="w-8 h-8 flex items-center justify-center rounded-lg text-white/70 hover:text-white hover:bg-white/20 transition-colors"
       >
         <i className="fa-solid fa-ellipsis-vertical text-sm" />
@@ -65,16 +70,16 @@ export default function DeckCardMenu({
       {open && (
         <div className="absolute right-0 top-10 w-52 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-40 py-1.5 overflow-hidden">
           {/* Rename */}
-          {!isReference && menuItem("Rename", "fa-pen", () => { setOpen(false); onRename(); })}
+          {!isReference && menuItem("Rename", "fa-pen", () => { setOpenAndNotify(false); onRename(); })}
 
           {/* Manage Cards */}
-          {hasCards && menuItem("Manage Cards", "fa-pen-to-square", () => { setOpen(false); onManageCards(); })}
+          {hasCards && menuItem("Manage Cards", "fa-pen-to-square", () => { setOpenAndNotify(false); onManageCards(); })}
 
           {/* Share/Unshare */}
           {!isReference && hasCards && menuItem(
             isPublic ? "Unshare" : "Share",
             isPublic ? "fa-globe" : "fa-share-nodes",
-            () => { setOpen(false); onShare(); }
+            () => { setOpenAndNotify(false); onShare(); }
           )}
 
           {/* Assign to Group */}
@@ -91,7 +96,7 @@ export default function DeckCardMenu({
               {showGroupList && (
                 <div className="bg-gray-50 dark:bg-gray-750 py-1">
                   <button
-                    onClick={(e) => { e.stopPropagation(); onAssignGroup(null); setOpen(false); }}
+                    onClick={(e) => { e.stopPropagation(); onAssignGroup(null); setOpenAndNotify(false); }}
                     className={`w-full text-left px-8 py-2 text-xs ${!deck.group ? "text-indigo-600 dark:text-indigo-400 font-medium" : "text-gray-500 dark:text-gray-400"} hover:bg-gray-100 dark:hover:bg-gray-700`}
                   >
                     No group
@@ -99,7 +104,7 @@ export default function DeckCardMenu({
                   {deckGroups.map(g => (
                     <button
                       key={g.id}
-                      onClick={(e) => { e.stopPropagation(); onAssignGroup(g.id); setOpen(false); }}
+                      onClick={(e) => { e.stopPropagation(); onAssignGroup(g.id); setOpenAndNotify(false); }}
                       className={`w-full text-left px-8 py-2 text-xs ${deck.group === g.id ? "text-indigo-600 dark:text-indigo-400 font-medium" : "text-gray-500 dark:text-gray-400"} hover:bg-gray-100 dark:hover:bg-gray-700`}
                     >
                       {g.name}
@@ -111,16 +116,16 @@ export default function DeckCardMenu({
           )}
 
           {/* Export */}
-          {hasCards && menuItem("Export", "fa-download", () => { setOpen(false); onExport(); })}
+          {hasCards && menuItem("Export", "fa-download", () => { setOpenAndNotify(false); onExport(); })}
 
           {/* Suggestions - for subscribed decks */}
-          {isReference && menuItem("Suggest Card", "fa-lightbulb", () => { setOpen(false); onSuggestCard(); }, "text-amber-600 dark:text-amber-400")}
+          {isReference && menuItem("Suggest Card", "fa-lightbulb", () => { setOpenAndNotify(false); onSuggestCard(); }, "text-amber-600 dark:text-amber-400")}
 
           {/* Review Suggestions - for published decks */}
           {isPublic && !isReference && menuItem(
             "Review Suggestions",
             "fa-inbox",
-            () => { setOpen(false); onReviewSuggestions(); },
+            () => { setOpenAndNotify(false); onReviewSuggestions(); },
             "text-amber-600 dark:text-amber-400",
             suggestionCount > 0 ? <span className="ml-auto text-[10px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full">{suggestionCount}</span> : null
           )}
@@ -129,14 +134,14 @@ export default function DeckCardMenu({
           {hasDocUrl && hasCards && !isReference && (
             <>
               {divider()}
-              {menuItem("Add More Cards", "fa-plus", () => { setOpen(false); onAddMore(); }, "text-emerald-600 dark:text-emerald-400")}
+              {menuItem("Add More Cards", "fa-plus", () => { setOpenAndNotify(false); onAddMore(); }, "text-emerald-600 dark:text-emerald-400")}
               {!confirmRegen
                 ? menuItem("Regenerate Cards", "fa-rotate", () => setConfirmRegen(true), "text-orange-600 dark:text-orange-400")
                 : (
                   <div className="px-4 py-2.5 space-y-2">
                     <p className="text-xs text-red-600 dark:text-red-400 font-medium">Replace all cards? Can't undo.</p>
                     <div className="flex gap-2">
-                      <button onClick={(e) => { e.stopPropagation(); setOpen(false); setConfirmRegen(false); onRegenerate(); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Yes</button>
+                      <button onClick={(e) => { e.stopPropagation(); setOpenAndNotify(false); setConfirmRegen(false); onRegenerate(); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Yes</button>
                       <button onClick={(e) => { e.stopPropagation(); setConfirmRegen(false); }} className="px-3 py-1.5 text-xs text-gray-500">Cancel</button>
                     </div>
                   </div>
@@ -149,7 +154,7 @@ export default function DeckCardMenu({
           {hasDocUrl && !hasCards && !isReference && (
             <>
               {divider()}
-              {menuItem("Generate Cards", "fa-wand-magic-sparkles", () => { setOpen(false); onGenerateFromDoc(); }, "text-indigo-600 dark:text-indigo-400")}
+              {menuItem("Generate Cards", "fa-wand-magic-sparkles", () => { setOpenAndNotify(false); onGenerateFromDoc(); }, "text-indigo-600 dark:text-indigo-400")}
             </>
           )}
 
@@ -161,7 +166,7 @@ export default function DeckCardMenu({
               <div className="px-4 py-2.5 space-y-2">
                 <p className="text-xs text-red-600 dark:text-red-400 font-medium">Delete this deck?</p>
                 <div className="flex gap-2">
-                  <button onClick={(e) => { e.stopPropagation(); setOpen(false); onDelete(); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Delete</button>
+                  <button onClick={(e) => { e.stopPropagation(); setOpenAndNotify(false); onDelete(); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Delete</button>
                   <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }} className="px-3 py-1.5 text-xs text-gray-500">Cancel</button>
                 </div>
               </div>

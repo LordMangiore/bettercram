@@ -76,6 +76,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
   const [confirmRegenDeckId, setConfirmRegenDeckId] = useState(null);
   const [confirmDeleteDeckId, setConfirmDeleteDeckId] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [menuOpenDeckId, setMenuOpenDeckId] = useState(null);
   const [renamingDeckId, setRenamingDeckId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [suggestionCounts, setSuggestionCounts] = useState({});
@@ -332,7 +333,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
         onClick={() => onSelectDeck(deck.id)}
         className={`relative rounded-2xl cursor-pointer hover:scale-[1.02] transition-all ${
           isActive ? "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900" : ""
-        }`}
+        } ${menuOpenDeckId === deck.id ? "z-30" : ""}`}
       >
         {/* Gradient header — clean: name + 3-dot menu only */}
         <div className={`bg-gradient-to-br ${getColor(colorIndex)} p-5 rounded-t-2xl`}>
@@ -368,6 +369,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
               <DeckCardMenu
                 deck={deck}
                 deckGroups={deckGroups}
+                onOpenChange={(isOpen) => setMenuOpenDeckId(isOpen ? deck.id : null)}
                 onRename={() => startRename(deck)}
                 onManageCards={() => onManageCards()}
                 onExport={handleExport}
