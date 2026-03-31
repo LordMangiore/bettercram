@@ -14,7 +14,7 @@ export default async (req) => {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { deckId, meta, cards, progress } = await req.json();
+    const { deckId, meta, cards, progress, pageOffset = 0 } = await req.json();
     if (!deckId) {
       return Response.json({ error: "deckId is required" }, { status: 400 });
     }
@@ -22,11 +22,12 @@ export default async (req) => {
     const totalPages = cards ? Math.ceil(cards.length / PAGE_SIZE) : 0;
 
     // Metadata for Firestore
+    // Use meta.cardCount if provided (for chunked saves from client)
     const firestoreMeta = {
       ...meta,
       v2: true,
-      totalPages,
-      cardCount: cards ? cards.length : 0,
+      totalPages: meta?.totalPages || totalPages,
+      cardCount: meta?.cardCount || (cards ? cards.length : 0),
       updatedAt: new Date().toISOString(),
     };
 
@@ -44,21 +45,23 @@ export default async (req) => {
       for (let i = 0; i < totalPages; i++) {
         const start = i * PAGE_SIZE;
         const pageCards = cards.slice(start, start + PAGE_SIZE);
-        await cardStore.setJSON(`${userId}-${deckId}-page-${i}`, {
+        await cardStore.setJSON(`${userId}-${deckId}-page-${pageOffset + i}`, {
           cards: pageCards,
           page: i,
           totalPages,
         });
       }
 
-      // Clean up extra pages if card count decreased
-      let extraPage = totalPages;
-      while (true) {
-        const key = `${userId}-${deckId}-page-${extraPage}`;
-        const existing = await cardStore.get(key);
-        if (!existing) break;
-        await cardStore.delete(key);
-        extraPage++;
+      // Clean up extra pages if card count decreased (only for non-chunked saves)
+      if (pageOffset === 0) {
+        let extraPage = totalPages;
+        while (true) {
+          const key = `${userId}-${deckId}-page-${extraPage}`;
+          const existing = await cardStore.get(key);
+          if (!existing) break;
+          await cardStore.delete(key);
+          extraPage++;
+        }
       }
     }
 

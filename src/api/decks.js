@@ -27,11 +27,11 @@ export async function saveDeck(deckId, deck) {
   return res.json();
 }
 
-export async function saveDeckV2(deckId, { meta, cards, progress }) {
+export async function saveDeckV2(deckId, { meta, cards, progress, pageOffset }) {
   const res = await fetch(`${API_BASE}/save-deck-v2`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ deckId, meta, cards, progress }),
+    body: JSON.stringify({ deckId, meta, cards, progress, pageOffset }),
   });
   if (!res.ok) throw new Error(await safeError(res, "Failed to save deck"));
   return res.json();

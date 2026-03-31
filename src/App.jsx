@@ -471,12 +471,15 @@ export default function App() {
     if (generatedCards.length > 2000) {
       const CHUNK = 2000;
       const { cards, ...meta } = updatedDeck;
+      const totalPages = Math.ceil(generatedCards.length / 500); // server pages at 500
+      const fullMeta = { ...meta, cardCount: generatedCards.length, totalPages };
       // Save metadata first (no cards)
-      await saveDeck(deckId, { ...meta, cards: [], cardCount: generatedCards.length });
-      // Then save cards in chunks via v2
+      await saveDeck(deckId, { ...fullMeta, cards: [] });
+      // Then save cards in chunks via v2 with page offsets
       for (let i = 0; i < generatedCards.length; i += CHUNK) {
         const chunk = generatedCards.slice(i, i + CHUNK);
-        await saveDeckV2(deckId, { meta, cards: chunk, progress: i === 0 ? {} : undefined });
+        const pageOffset = Math.floor(i / 500); // align with server's 500-card pages
+        await saveDeckV2(deckId, { meta: fullMeta, cards: chunk, progress: i === 0 ? {} : undefined, pageOffset });
         setGeneratingStatus(`Saving cards ${Math.min(i + CHUNK, generatedCards.length)}/${generatedCards.length}...`);
       }
     } else {
