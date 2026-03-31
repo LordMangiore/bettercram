@@ -13,7 +13,6 @@ export default function DeckCardMenu({
     setOpen(val);
     onOpenChange?.(val);
   }
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [showGroupList, setShowGroupList] = useState(false);
   const menuRef = useRef(null);
@@ -24,7 +23,6 @@ export default function DeckCardMenu({
     function handleClick(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setOpenAndNotify(false);
-        setConfirmDelete(false);
         setConfirmRegen(false);
         setShowGroupList(false);
       }
@@ -160,18 +158,7 @@ export default function DeckCardMenu({
 
           {/* Delete */}
           {divider()}
-          {!confirmDelete
-            ? menuItem("Delete", "fa-trash", () => setConfirmDelete(true), "text-red-500 dark:text-red-400")
-            : (
-              <div className="px-4 py-2.5 space-y-2">
-                <p className="text-xs text-red-600 dark:text-red-400 font-medium">Delete this deck?</p>
-                <div className="flex gap-2">
-                  <button onClick={(e) => { e.stopPropagation(); setOpenAndNotify(false); onDelete(); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Delete</button>
-                  <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }} className="px-3 py-1.5 text-xs text-gray-500">Cancel</button>
-                </div>
-              </div>
-            )
-          }
+          {menuItem("Delete", "fa-trash", () => { setOpenAndNotify(false); onDelete(); }, "text-red-500 dark:text-red-400")}
         </div>
       )}
     </div>
