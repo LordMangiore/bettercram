@@ -153,7 +153,7 @@ export default async function handler(req) {
     if (imageExts.includes(ext)) {
       try {
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic();
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
         // Convert to base64
         const base64 = fileBuffer.toString("base64");

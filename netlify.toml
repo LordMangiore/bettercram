@@ -31,6 +31,15 @@
 [functions."seed-sample-decks"]
   timeout = 26
 
+[functions."parse-upload"]
+  timeout = 26
+
+[functions."analyze-structure"]
+  timeout = 26
+
+[functions."score-cards"]
+  timeout = 26
+
 [dev]
   command = "npm run dev"
   targetPort = 5173
