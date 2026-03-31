@@ -20,29 +20,50 @@ function cardKey(card) {
  * Prioritizes struggling cards while mixing in random ones.
  */
 function selectCardsForQuiz(cards, progress, numQuestions) {
-  const scored = cards.map((card) => {
+  const total = Math.min(numQuestions, cards.length);
+
+  // For large decks, pre-filter to weak/due cards + random sample instead of scoring all
+  let candidates = cards;
+  if (cards.length > 500) {
+    const weak = [];
+    const rest = [];
+    for (const card of cards) {
+      const p = progress?.[cardKey(card)];
+      if (!p?.fsrs || p.fsrs.lapses > 0 || p.fsrs.stability < 15 || new Date(p.fsrs.due) <= new Date()) {
+        weak.push(card);
+      } else {
+        rest.push(card);
+      }
+      // Stop collecting once we have enough candidates
+      if (weak.length >= total * 3) break;
+    }
+    // Fill with random if not enough weak cards
+    const needed = Math.max(total * 2, 200) - weak.length;
+    if (needed > 0 && rest.length > 0) {
+      const randomSample = shuffle(rest).slice(0, needed);
+      candidates = [...weak, ...randomSample];
+    } else {
+      candidates = weak;
+    }
+  }
+
+  const scored = candidates.map((card) => {
     const key = cardKey(card);
     const p = progress?.[key];
-    let priority = 1; // base priority
+    let priority = 1;
 
     if (!p || !p.fsrs) {
-      // New card — moderate priority
       priority = 2;
     } else {
       const fsrs = p.fsrs;
-      // High lapses = high priority (struggling)
       priority += (fsrs.lapses || 0) * 3;
-      // Low stability = high priority (fragile memory)
       if (fsrs.stability < 5) priority += 4;
       else if (fsrs.stability < 15) priority += 2;
-      // Due soon = higher priority
       const dueDate = new Date(fsrs.due);
-      const now = new Date();
-      const daysUntilDue = (dueDate - now) / 86400000;
-      if (daysUntilDue <= 0) priority += 3; // overdue
+      const daysUntilDue = (dueDate - new Date()) / 86400000;
+      if (daysUntilDue <= 0) priority += 3;
       else if (daysUntilDue <= 1) priority += 2;
       else if (daysUntilDue <= 3) priority += 1;
-      // High difficulty = higher priority
       if (fsrs.difficulty > 7) priority += 2;
       else if (fsrs.difficulty > 5) priority += 1;
     }
@@ -50,11 +71,8 @@ function selectCardsForQuiz(cards, progress, numQuestions) {
     return { card, priority };
   });
 
-  // Sort by priority (highest first)
   scored.sort((a, b) => b.priority - a.priority);
 
-  // Take top 50% struggling + 30% due soon + 20% random
-  const total = Math.min(numQuestions, cards.length);
   const strugglingCount = Math.ceil(total * 0.5);
   const randomCount = total - strugglingCount;
 

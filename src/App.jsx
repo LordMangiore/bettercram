@@ -743,12 +743,8 @@ export default function App() {
     if (progressStr === lastProgressSave.current) return;
     const timer = setTimeout(() => {
       lastProgressSave.current = progressStr;
-      saveDeckProgress(activeDeckId, progress).catch(() => {
-        // Fall back to full deck save if v2 endpoint fails
-        const currentDeck = decks.find(d => d.id === activeDeckId);
-        if (currentDeck) {
-          saveDeck(activeDeckId, { ...currentDeck, cards, progress, cardCount: cards.length, lastStudied: new Date().toISOString() });
-        }
+      saveDeckProgress(activeDeckId, progress).catch((err) => {
+        console.log("Progress save failed:", err);
       });
       setDecks(prev => prev.map(d =>
         d.id === activeDeckId ? { ...d, lastStudied: new Date().toISOString() } : d
@@ -757,10 +753,12 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [progress, activeDeckId]);
 
-  // Auto-save cards when they change (less frequent — only on card add/edit/delete)
+  // Auto-save cards when they change — skip for large v2 decks (cards saved per-operation)
   const lastCardsSave = useRef(null);
   useEffect(() => {
     if (!activeDeckId || !user || cards.length === 0) return;
+    // Skip full-deck save for large decks — they use v2 paginated storage
+    if (cards.length > 2000) return;
     const cardsLen = cards.length;
     if (cardsLen === lastCardsSave.current) return;
     const timer = setTimeout(() => {
@@ -775,46 +773,53 @@ export default function App() {
 
   const activeDeck = decks.find(d => d.id === activeDeckId);
 
-  const filteredCards = useMemo(() => {
-    let result = cards.filter((c) => c?.front && (c?.back || c?.occlusion || c?.frontImages?.length > 0)); // skip malformed cards
-    if (activeCategory !== "All") {
-      result = result.filter((c) => c.category === activeCategory);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) =>
-          (c.front || "").toLowerCase().includes(q) ||
-          (c.back || "").toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [cards, activeCategory, searchQuery]);
+  // Single-pass filtering + category counting (avoids duplicate iteration on 16K+ decks)
+  const { filteredCards, categoryCounts } = useMemo(() => {
+    const counts = { All: 0 };
+    const filtered = [];
+    const q = searchQuery.trim() ? searchQuery.toLowerCase() : "";
 
-  const categoryCounts = useMemo(() => {
-    const valid = cards.filter((c) => c?.front && (c?.back || c?.occlusion || c?.frontImages?.length > 0));
-    const counts = { All: valid.length };
-    valid.forEach((c) => {
+    for (const c of cards) {
+      if (!c?.front || !(c?.back || c?.occlusion || c?.frontImages?.length > 0)) continue;
+      counts.All++;
       const cat = c.category || "General";
       counts[cat] = (counts[cat] || 0) + 1;
-    });
-    return counts;
-  }, [cards]);
+      if (activeCategory !== "All" && c.category !== activeCategory) continue;
+      if (q && !(c.front || "").toLowerCase().includes(q) && !(c.back || "").toLowerCase().includes(q)) continue;
+      filtered.push(c);
+    }
+
+    return { filteredCards: filtered, categoryCounts: counts };
+  }, [cards, activeCategory, searchQuery]);
 
   async function saveToDeck(updatedCards, updatedProgress) {
     if (!activeDeckId) return;
     const currentDeck = decks.find(d => d.id === activeDeckId);
     if (!currentDeck) return;
     try {
-      await saveDeck(activeDeckId, {
-        ...currentDeck,
-        cards: updatedCards || cards,
-        progress: updatedProgress || progress,
-        cardCount: (updatedCards || cards).length,
-        lastStudied: new Date().toISOString(),
-      });
+      const cardsToSave = updatedCards || cards;
+      // For large decks, only save metadata + progress (cards already in v2 storage)
+      if (cardsToSave.length > 2000) {
+        await saveDeck(activeDeckId, {
+          ...currentDeck,
+          cards: [],
+          cardCount: cardsToSave.length,
+          lastStudied: new Date().toISOString(),
+        });
+        if (updatedProgress) {
+          await saveDeckProgress(activeDeckId, updatedProgress);
+        }
+      } else {
+        await saveDeck(activeDeckId, {
+          ...currentDeck,
+          cards: cardsToSave,
+          progress: updatedProgress || progress,
+          cardCount: cardsToSave.length,
+          lastStudied: new Date().toISOString(),
+        });
+      }
       setDecks(prev => prev.map(d =>
-        d.id === activeDeckId ? { ...d, cards: updatedCards || cards, cardCount: (updatedCards || cards).length, lastStudied: new Date().toISOString() } : d
+        d.id === activeDeckId ? { ...d, cardCount: cardsToSave.length, lastStudied: new Date().toISOString() } : d
       ));
     } catch (e) {
       console.error("Failed to save to deck:", e);

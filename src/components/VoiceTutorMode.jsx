@@ -1,8 +1,63 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useConversation } from "@11labs/react";
 import { computeExperienceWeight, generateEmpathyPrompt, getTimeContext, getObserverBrief, buildEmpathyContext } from "../lib/empathyEngine";
 
 const AGENT_ID = "agent_3101kmc104q3f1ksrtqgzwhxjj1v";
+
+function CardPicker({ cards, status, onSelectCard }) {
+  const [query, setQuery] = useState("");
+  const [showCount, setShowCount] = useState(20);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return cards;
+    const q = query.toLowerCase();
+    return cards.filter(c => (c.front || "").toLowerCase().includes(q) || (c.category || "").toLowerCase().includes(q));
+  }, [cards, query]);
+
+  const visible = filtered.slice(0, showCount);
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+        Or pick a specific card to discuss
+      </h3>
+      <div className="relative mb-3">
+        <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowCount(20); }}
+          placeholder="Search cards..."
+          className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg text-sm text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+        />
+      </div>
+      <div className="max-h-64 overflow-y-auto space-y-2" style={{ scrollbarWidth: "none" }}>
+        {visible.map((card, i) => (
+          <button
+            key={card.id || i}
+            onClick={() => onSelectCard(card)}
+            disabled={status === "connecting"}
+            className="w-full text-left p-3 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 disabled:opacity-50"
+          >
+            <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2">{card.front}</p>
+            <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 inline-block">{card.category}</span>
+          </button>
+        ))}
+        {showCount < filtered.length && (
+          <button
+            onClick={() => setShowCount(c => c + 20)}
+            className="w-full py-2 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700"
+          >
+            Show more ({filtered.length - showCount} remaining)
+          </button>
+        )}
+        {filtered.length === 0 && query && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">No cards match "{query}"</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function buildDeckContext(cards, maxCards = 50) {
   // Build a condensed study guide from the deck's cards
@@ -426,34 +481,8 @@ Your primary job is helping this student learn the material in their deck coveri
             </div>
           </div>
 
-          {/* Card picker */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-              Or pick a specific card to discuss
-            </h3>
-            <div className="max-h-64 overflow-y-auto space-y-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-              {cards.slice(0, 50).map((card, i) => (
-                <button
-                  key={i}
-                  onClick={() => startConversation(card)}
-                  disabled={status === "connecting"}
-                  className="w-full text-left p-3 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 disabled:opacity-50"
-                >
-                  <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2">
-                    {card.front}
-                  </p>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 inline-block">
-                    {card.category}
-                  </span>
-                </button>
-              ))}
-              {cards.length > 50 && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
-                  Showing first 50 cards. Use category filter to narrow down.
-                </p>
-              )}
-            </div>
-          </div>
+          {/* Card picker with search */}
+          <CardPicker cards={cards} status={status} onSelectCard={startConversation} />
         </div>
       )}
 

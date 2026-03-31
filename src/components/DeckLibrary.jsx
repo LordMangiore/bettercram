@@ -325,11 +325,14 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
     const pendingSuggestions = suggestionCounts[deck.id] || 0;
 
     function handleExport() {
-      const blob = new Blob([JSON.stringify({ name: deck.name, cards: deck.cards || [] }, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `${deck.name.replace(/[^a-z0-9]/gi, "_")}.json`; a.click();
-      URL.revokeObjectURL(url);
+      // Defer to avoid blocking main thread on large decks
+      setTimeout(() => {
+        const blob = new Blob([JSON.stringify({ name: deck.name, cards: deck.cards || [] })], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `${deck.name.replace(/[^a-z0-9]/gi, "_")}.json`; a.click();
+        URL.revokeObjectURL(url);
+      }, 0);
     }
 
     return (

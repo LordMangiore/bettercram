@@ -206,10 +206,15 @@ function computeSessionState(sessionStats) {
  * EW = (P × D) / (A × S × R)
  */
 export function computeExperienceWeight(cards, progress, sessionStats = null) {
-  const P = computeNovelty(cards, progress);
-  const D = computeDurationDecay(cards, progress);
+  // For large decks, sample a representative subset to avoid O(n) full scans
+  const sample = cards.length > 200
+    ? cards.slice(0, 100).concat(cards.slice(-100))
+    : cards;
+
+  const P = computeNovelty(sample, progress);
+  const D = computeDurationDecay(sample, progress);
   const A = computeExperience(progress);
-  const S = computeCompetence(cards, progress);
+  const S = computeCompetence(sample, progress);
   const R = computeAptitude(progress);
 
   // The core equation

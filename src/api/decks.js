@@ -69,7 +69,7 @@ export async function loadAllDeckCards(deckId) {
   // Load pages until we get an empty result — don't rely on totalPages
   // from individual page blobs (may be stale from chunked saves)
   const allCards = [];
-  const PARALLEL = 5;
+  const PARALLEL = 10;
   let page = 0;
   let keepGoing = true;
 
