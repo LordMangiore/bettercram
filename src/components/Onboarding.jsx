@@ -290,7 +290,7 @@ function StepDecks({ subjects, selectedDecks, setSelectedDecks, onNext, onBack }
                     {deck.name}
                   </p>
                   <p className="text-xs text-gray-500 truncate">
-                    {deck.cardCount} cards{deck.author ? ` \u00b7 by ${deck.author}` : ""}
+                    {deck.cardCount} cards{deck.author ? ` \u00b7 by ${typeof deck.author === "object" ? (deck.author.name || deck.author.email || "Community") : deck.author}` : ""}
                   </p>
                 </div>
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
