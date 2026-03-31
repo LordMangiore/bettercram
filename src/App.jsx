@@ -1074,7 +1074,13 @@ export default function App() {
 
   async function handleAssignDeckGroup(deckId, groupId) {
     setDecks(prev => prev.map(d => d.id === deckId ? { ...d, group: groupId } : d));
-    try { await assignDeckGroup(deckId, groupId); } catch (e) { console.error("Assign group failed:", e); }
+    try {
+      // Send full deck metadata to avoid overwriting with partial data
+      const deck = decks.find(d => d.id === deckId);
+      if (deck) {
+        await saveDeck(deckId, { ...deck, group: groupId || null });
+      }
+    } catch (e) { console.error("Assign group failed:", e); }
   }
 
   async function handleStudyGroup(testId) {
