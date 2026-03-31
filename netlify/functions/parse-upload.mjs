@@ -148,7 +148,71 @@ export default async function handler(req) {
       }
     }
 
-    return Response.json({ error: `Unsupported file type: .${ext}. Upload a PDF or Anki .apkg file.` }, { status: 400 });
+    // ── Images (handwritten notes, photos of textbooks, diagrams) ──
+    const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
+    if (imageExts.includes(ext)) {
+      try {
+        const Anthropic = (await import("@anthropic-ai/sdk")).default;
+        const client = new Anthropic();
+
+        // Convert to base64
+        const base64 = fileBuffer.toString("base64");
+        const mimeType = ext === "heic" || ext === "heif" ? "image/png"
+          : ext === "jpg" ? "image/jpeg"
+          : `image/${ext}`;
+
+        const response = await client.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8192,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: mimeType, data: base64 },
+                },
+                {
+                  type: "text",
+                  text: `Read ALL text from this image. This may be handwritten notes, a photo of a textbook page, a whiteboard, or printed material.
+
+RULES:
+- Transcribe EVERYTHING you can read — every word, number, symbol, equation
+- Preserve the structure: headings, bullet points, numbered lists, paragraphs
+- For handwritten text, do your best to read messy handwriting
+- For equations/formulas, write them in plain text or LaTeX notation
+- For diagrams, describe them briefly in [brackets]
+- If there are multiple pages/sections visible, separate them clearly
+- Do NOT summarize or paraphrase — transcribe verbatim
+- If something is illegible, write [illegible] in that spot
+
+Return ONLY the transcribed text, nothing else.`,
+                },
+              ],
+            },
+          ],
+        });
+
+        const text = response.content[0].text?.trim();
+
+        if (!text || text.length < 20) {
+          return Response.json({ error: "Could not read text from this image. Try a clearer photo." }, { status: 400 });
+        }
+
+        return Response.json({
+          type: "text",
+          content: text,
+          title: fileName.replace(/\.[^.]+$/, ""),
+          chars: text.length,
+          source: "handwritten",
+        });
+      } catch (err) {
+        console.error("Image OCR error:", err);
+        return Response.json({ error: "Failed to read image: " + err.message }, { status: 400 });
+      }
+    }
+
+    return Response.json({ error: `Unsupported file type: .${ext}. Upload a PDF, Anki .apkg, or image file.` }, { status: 400 });
   } catch (err) {
     console.error("Upload parse error:", err);
     return Response.json({ error: err.message }, { status: 500 });

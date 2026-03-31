@@ -576,17 +576,21 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.apkg"
+                    accept=".pdf,.apkg,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif"
+                    multiple
                     className="hidden"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const meta = { name: file.name, size: file.size };
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+                      const file = files[0];
+                      const meta = { name: files.length > 1 ? `${files.length} files` : file.name, size: files.reduce((s, f) => s + f.size, 0) };
                       setUploadFile(meta);
                       setUploadReady(null);
-                      if (!newName.trim()) setNewName(file.name.replace(/\.(pdf|apkg)$/i, ""));
+                      if (!newName.trim()) setNewName(file.name.replace(/\.[^.]+$/, ""));
 
                       const ext = file.name.toLowerCase().split(".").pop();
+                      const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
+
                       if (ext === "apkg") {
                         // Parse Anki immediately while File reference is alive
                         setUploadParsing(true);
@@ -617,11 +621,37 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                         setUploadParsing(true);
                         setUploadStatus("Reading PDF...");
                         try {
-                          const pdfFile = file; // use immediately
+                          const pdfFile = file;
                           const result = await parseUploadedFile(pdfFile);
                           setUploadReady(result);
                           setUploadStatus(`Ready: ${result.chars ? Math.round(result.chars / 1000) + "k chars" : "parsed"}`);
                         } catch (err) {
+                          setUploadStatus(`Error: ${err.message}`);
+                          setUploadReady(null);
+                        } finally {
+                          setUploadParsing(false);
+                        }
+                      } else if (imageExts.includes(ext)) {
+                        // Images: OCR handwritten/photo notes via Claude Vision
+                        const imageFiles = files.filter(f => imageExts.includes(f.name.toLowerCase().split(".").pop()));
+                        setUploadParsing(true);
+                        try {
+                          let combinedText = "";
+                          for (let i = 0; i < imageFiles.length; i++) {
+                            setUploadStatus(`Reading ${imageFiles.length > 1 ? `page ${i + 1}/${imageFiles.length}` : "image"}...`);
+                            const result = await parseUploadedFile(imageFiles[i]);
+                            if (result.content) {
+                              combinedText += (combinedText ? "\n\n---\n\n" : "") + result.content;
+                            }
+                          }
+                          if (combinedText.length < 20) {
+                            throw new Error("Could not read text from the image(s). Try clearer photos.");
+                          }
+                          setUploadReady({ type: "text", content: combinedText, title: file.name.replace(/\.[^.]+$/, ""), chars: combinedText.length, source: "handwritten" });
+                          setUploadStatus(`Ready: ${imageFiles.length} page${imageFiles.length > 1 ? "s" : ""} — ${Math.round(combinedText.length / 1000)}k chars read`);
+                          if (window.plausible) window.plausible("Handwritten Import", { props: { pages: String(imageFiles.length), chars: String(combinedText.length) } });
+                        } catch (err) {
+                          console.error("Image OCR error:", err);
                           setUploadStatus(`Error: ${err.message}`);
                           setUploadReady(null);
                         } finally {
@@ -641,7 +671,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                   >
                     {uploadFile ? (
                       <div>
-                        <i className={`fa-solid ${uploadFile.name.endsWith(".apkg") ? "fa-layer-group text-purple-500" : "fa-file-pdf text-red-500"} text-2xl mb-2`} />
+                        <i className={`fa-solid ${uploadFile.name.endsWith(".apkg") ? "fa-layer-group text-purple-500" : uploadFile.name.includes("files") ? "fa-images text-emerald-500" : uploadFile.name.match(/\.(jpg|jpeg|png|gif|webp|heic|heif)$/i) ? "fa-camera text-emerald-500" : "fa-file-pdf text-red-500"} text-2xl mb-2`} />
                         <p className="text-sm font-medium text-gray-900 dark:text-white">{uploadFile.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{(uploadFile.size / 1024 / 1024).toFixed(1)} MB</p>
                         <p className="text-xs text-indigo-500 mt-2">Tap to change file</p>
@@ -649,8 +679,8 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                     ) : (
                       <div>
                         <i className="fa-solid fa-cloud-arrow-up text-2xl text-gray-400 dark:text-gray-500 mb-2" />
-                        <p className="text-sm text-gray-600 dark:text-gray-300">Tap to upload a file</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PDF or Anki (.apkg) — any size</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Tap to upload</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PDF, Anki (.apkg), or photos of notes</p>
                       </div>
                     )}
                   </button>
