@@ -60,18 +60,18 @@ export default async function handler(req) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const store = getStore("otp-codes");
+    const store = getStore({ name: "otp-codes", consistency: "strong" });
 
-    // Retry blob read up to 3 times — Netlify Blobs can have propagation delay
+    // Retry blob read up to 5 times with increasing delays
     let otpData = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         otpData = await store.get(normalizedEmail, { type: "json" });
         if (otpData) break;
       } catch (e) {
         console.log(`OTP blob read attempt ${attempt + 1} failed:`, e.message);
       }
-      if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+      if (attempt < 4) await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
     }
 
     if (!otpData) {

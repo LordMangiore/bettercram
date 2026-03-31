@@ -17,7 +17,7 @@ export default async function handler(req) {
     const normalizedEmail = email.toLowerCase().trim();
 
     // Rate limit: max 3 OTP requests per email per 5 minutes
-    const store = getStore("otp-codes");
+    const store = getStore({ name: "otp-codes", consistency: "strong" });
     try {
       const existing = await store.get(normalizedEmail, { type: "json" });
       if (existing && existing.sentAt && (Date.now() - existing.sentAt) < 60_000) {
