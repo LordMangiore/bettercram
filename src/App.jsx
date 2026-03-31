@@ -675,10 +675,25 @@ export default function App() {
       fsGetProgress(user.id, deckId).then(p => { if (p) setProgress(p); }).catch(() => {});
 
       const { deck: fullDeck } = await loadDeck(deckId);
-      if (fullDeck?.cards?.length > 0) {
-        setCards(ensureCardIds(fullDeck.cards));
-        deckCacheRef.current.set(deckId, { cards: fullDeck.cards, at: Date.now() });
-        if (fullDeck.progress) setProgress(fullDeck.progress);
+      let deckCards = fullDeck?.cards || [];
+
+      // If deck has cards according to metadata but loadDeck returned none,
+      // try loading from v2 paginated storage
+      if (deckCards.length === 0) {
+        const deckMeta = decks.find(d => d.id === deckId);
+        if (deckMeta?.cardCount > 0 || fullDeck?.v2) {
+          try {
+            deckCards = await loadAllDeckCards(deckId);
+          } catch (e) {
+            console.log("V2 card load failed:", e);
+          }
+        }
+      }
+
+      if (deckCards.length > 0) {
+        setCards(ensureCardIds(deckCards));
+        deckCacheRef.current.set(deckId, { cards: deckCards, at: Date.now() });
+        if (fullDeck?.progress) setProgress(fullDeck.progress);
       } else {
         // Deck exists but no cards yet (blob propagation delay) — retry once after 2s
         setCards([]);
@@ -689,6 +704,12 @@ export default function App() {
             if (retry?.cards?.length > 0) {
               setCards(ensureCardIds(retry.cards));
               setProgress(retry.progress || {});
+            } else {
+              // Try v2 paginated storage
+              const v2Cards = await loadAllDeckCards(deckId);
+              if (v2Cards.length > 0) {
+                setCards(ensureCardIds(v2Cards));
+              }
             }
           } catch {}
         }, 2000);
