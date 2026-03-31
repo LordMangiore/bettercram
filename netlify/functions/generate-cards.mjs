@@ -65,7 +65,7 @@ Rules:
 - For processes, ask about steps and mechanisms
 - For comparisons, highlight the differences
 - Handle special characters (musical notation, math symbols, etc.) naturally
-${category ? `- Focus only on content related to: ${category}` : ""}
+${category ? `- CATEGORY OVERRIDE: Set the "category" field of ALL cards to exactly "${category}". This is the chapter/section these cards belong to.` : ""}
 ${existingTopics ? `- IMPORTANT: These topics have ALREADY been covered in other cards. Do NOT create cards about them: ${existingTopics}` : ""}
 ${densityInstruction}
 Return ONLY a valid JSON array, no markdown fences, no other text. Start with [ and end with ].`;

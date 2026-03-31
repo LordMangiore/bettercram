@@ -3,7 +3,7 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useAuth } from "./hooks/useAuth";
 import { useHistoryNav } from "./hooks/useHistoryNav";
-import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scoreCards, regenCard, scrapeDocument, searchAndScrape, crawlStart, crawlPoll, extractCards, saveStudyPlan, loadStudyPlan, checkSubscription, loadDecks, loadDeck, saveDeck, saveDeckV2, deleteDeck as apiDeleteDeck, seedSampleDecks, precacheFirstPodcast, subscribeToDeck, saveDeckProgress, loadAllDeckCards, saveProfile, loadProfile, saveDeckGroups, assignDeckGroup } from "./api";
+import { saveCards, loadCards, setAuthToken, setUserId, generateMore, generateCards, scoreCards, regenCard, scrapeDocument, searchAndScrape, crawlStart, crawlPoll, extractCards, analyzeStructure, saveStudyPlan, loadStudyPlan, checkSubscription, loadDecks, loadDeck, saveDeck, saveDeckV2, deleteDeck as apiDeleteDeck, seedSampleDecks, precacheFirstPodcast, subscribeToDeck, saveDeckProgress, loadAllDeckCards, saveProfile, loadProfile, saveDeckGroups, assignDeckGroup } from "./api";
 import { getProfile as fsGetProfile, getDecks as fsGetDecks, getDeckProgress as fsGetProgress, getStudyPlan as fsGetStudyPlan, onDecksChanged, getDeckGroups as fsGetDeckGroups, onDeckGroupsChanged, onNotificationsChanged } from "./lib/firestoreClient";
 import AppHeader from "./components/AppHeader";
 import MobileNav from "./components/MobileNav";
@@ -390,47 +390,102 @@ export default function App() {
   async function generateFromContent(content, setStatus, { density = "balanced" } = {}) {
     const densityChunkSize = { concise: 8000, balanced: 4000, comprehensive: 2500 };
     const chunkSize = densityChunkSize[density] || 4000;
-    const chunks = [];
-    for (let i = 0; i < content.length; i += chunkSize) {
-      chunks.push(content.slice(i, i + chunkSize));
-    }
-    let allCards = [];
-    let coveredTopics = "";
-    const PARALLEL = 5;
-    const totalBatches = Math.ceil(chunks.length / PARALLEL);
 
     // Helper: generate with retry
-    async function generateWithRetry(chunk, topics, retries = 2) {
+    async function generateWithRetry(chunk, category, topics, retries = 2) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-          return await generateCards(chunk, null, topics || undefined, density);
+          return await generateCards(chunk, category || null, topics || undefined, density);
         } catch (e) {
           if (attempt === retries) {
             console.error("Chunk failed after retries:", e.message);
-            return { cards: [] }; // Skip failed chunk instead of stalling
+            return { cards: [] };
           }
-          // Wait briefly before retry
           await new Promise(r => setTimeout(r, 1000));
         }
       }
       return { cards: [] };
     }
 
-    for (let i = 0; i < chunks.length; i += PARALLEL) {
-      const batchNum = Math.floor(i / PARALLEL) + 1;
-      setStatus(`Generating cards... batch ${batchNum}/${totalBatches} — ${allCards.length} cards so far`);
-      const batch = chunks.slice(i, i + PARALLEL);
-      const results = await Promise.allSettled(
-        batch.map(chunk => generateWithRetry(chunk, coveredTopics))
-      );
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value?.cards) {
-          allCards = allCards.concat(r.value.cards);
+    // Helper: generate cards from a flat chunk array
+    async function generateFromChunks(chunks, category, setStatus, startLabel = "") {
+      let cards = [];
+      let coveredTopics = "";
+      const PARALLEL = 5;
+      const totalBatches = Math.ceil(chunks.length / PARALLEL);
+
+      for (let i = 0; i < chunks.length; i += PARALLEL) {
+        const batchNum = Math.floor(i / PARALLEL) + 1;
+        setStatus(`${startLabel}Generating cards... batch ${batchNum}/${totalBatches} — ${cards.length} cards so far`);
+        const batch = chunks.slice(i, i + PARALLEL);
+        const results = await Promise.allSettled(
+          batch.map(chunk => generateWithRetry(chunk, category, coveredTopics))
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value?.cards) {
+            cards = cards.concat(r.value.cards);
+          }
         }
+        coveredTopics = cards.map(c => c.front.slice(0, 40)).join(", ");
+        if (coveredTopics.length > 500) coveredTopics = coveredTopics.slice(0, 500);
       }
-      // Build topic summary from generated cards for next batch
-      coveredTopics = allCards.map(c => c.front.slice(0, 40)).join(", ");
-      if (coveredTopics.length > 500) coveredTopics = coveredTopics.slice(0, 500);
+      return cards;
+    }
+
+    let allCards = [];
+
+    // For large documents, detect chapter structure first
+    if (content.length >= 10000) {
+      setStatus("Analyzing document structure...");
+      try {
+        const { sections, type } = await analyzeStructure(content);
+
+        if (type !== "flat" && sections.length > 1) {
+          setStatus(`Found ${sections.length} sections — generating cards by chapter...`);
+          console.log("Document structure:", sections.map(s => `${s.title} (${s.content.length} chars)`));
+
+          for (let si = 0; si < sections.length; si++) {
+            const section = sections[si];
+            const sectionChunks = [];
+            for (let i = 0; i < section.content.length; i += chunkSize) {
+              sectionChunks.push(section.content.slice(i, i + chunkSize));
+            }
+
+            const sectionCards = await generateFromChunks(
+              sectionChunks,
+              section.title,
+              setStatus,
+              `[${si + 1}/${sections.length}] ${section.title}: `
+            );
+
+            // Ensure all cards from this section have the chapter category
+            const taggedCards = sectionCards.map(c => ({ ...c, category: section.title }));
+            allCards = allCards.concat(taggedCards);
+            setStatus(`${section.title}: ${sectionCards.length} cards — ${allCards.length} total`);
+          }
+        } else {
+          // Flat document — use original chunking
+          const chunks = [];
+          for (let i = 0; i < content.length; i += chunkSize) {
+            chunks.push(content.slice(i, i + chunkSize));
+          }
+          allCards = await generateFromChunks(chunks, null, setStatus);
+        }
+      } catch (err) {
+        console.error("Structure analysis failed, falling back to flat:", err);
+        const chunks = [];
+        for (let i = 0; i < content.length; i += chunkSize) {
+          chunks.push(content.slice(i, i + chunkSize));
+        }
+        allCards = await generateFromChunks(chunks, null, setStatus);
+      }
+    } else {
+      // Short content — just chunk and generate
+      const chunks = [];
+      for (let i = 0; i < content.length; i += chunkSize) {
+        chunks.push(content.slice(i, i + chunkSize));
+      }
+      allCards = await generateFromChunks(chunks, null, setStatus);
     }
     // Quality scoring pass — deduplicate and improve
     if (allCards.length > 5) {

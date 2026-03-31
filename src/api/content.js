@@ -109,6 +109,16 @@ export async function crawlPoll(jobId) {
   return res.json();
 }
 
+export async function analyzeStructure(content) {
+  const res = await fetch(`${API_BASE}/analyze-structure`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) return { sections: [{ title: "General", content }], type: "flat" };
+  return res.json();
+}
+
 export async function extractCards(url) {
   const res = await fetch(`${API_BASE}/extract-cards`, {
     method: "POST",
