@@ -4,16 +4,7 @@ import { computeExperienceWeight, generateEmpathyPrompt, getTimeContext, getObse
 
 const AGENT_ID = "agent_3101kmc104q3f1ksrtqgzwhxjj1v";
 
-function buildDeckContext(cards, maxCards = 50) {
-  const sample = cards.slice(0, maxCards);
-  const categories = [...new Set(sample.map(c => c.category))].join(", ");
-  const cardList = sample
-    .map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`)
-    .join("\n\n");
-  return { categories, cardList, total: cards.length };
-}
-
-export default function VoiceTutorMode({ cards, deckName, progress = {}, sessionStats = null, activeCategory = "All" }) {
+export default function VoiceTutorMode({ cards, deckName, deckId, userId, progress = {}, sessionStats = null, activeCategory = "All" }) {
   const [status, setStatus] = useState("idle"); // idle | connecting | connected | error
   const [messages, setMessages] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
@@ -46,7 +37,8 @@ export default function VoiceTutorMode({ cards, deckName, progress = {}, session
 
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        const { categories, cardList, total } = buildDeckContext(cards);
+        const categories = [...new Set(cards.map(c => c.category).filter(Boolean))].join(", ");
+        const total = cards.length;
 
         const empathyState = computeExperienceWeight(cards, progress, sessionStats);
         const timeContext = getTimeContext();
@@ -90,57 +82,24 @@ export default function VoiceTutorMode({ cards, deckName, progress = {}, session
           localStorage.setItem(key, Date.now().toString());
         } catch {}
 
-        const systemPrompt = `You are Nova, an expert study tutor helping a student with their ${deckName || "study"} deck.
+        const systemPrompt = `You are Nova, a study tutor helping a student with their ${deckName || "study"} deck (${total} cards covering ${categories}).
 
-=== YOUR STUDY MATERIAL (USE THIS) ===
-You have access to the student's deck: ${total} cards covering ${categories}.
-When quizzing or teaching, ALWAYS draw from these actual cards. Do NOT make up your own questions. These are the cards the student is studying:
-
-${cardList}
-
-When the student says "quiz me", "test me", or asks for questions:
-- Pick a card from the list above
-- Ask the question (the Q side)
-- Wait for their answer
-- Compare to the actual answer (the A side)
-- Explain what they got right/wrong
-- Move to the next card
-Never say you "don't have access" to their deck. You DO — it's right above.
-=== END STUDY MATERIAL ===
+TOOL USE — SEARCH BEFORE YOU QUIZ:
+You have a search_deck_cards tool. USE IT. Before quizzing, explaining, or referencing cards:
+1. Call search_deck_cards with a relevant keyword or topic
+2. Use the returned cards as your source material
+3. NEVER make up questions — only use cards from search results
+4. If the student asks about a topic, search for it first, then teach from what you find
+5. When moving to a new topic, search again — don't reuse old results for different subjects
 
 ${empathyPrompt}
 ${timeContext ? `\nTIME CONTEXT: ${timeContext}` : ""}${categoryContext}
 
-DISAMBIGUATION:
-The student may want you to quiz them from the deck, OR they may have their own question. LISTEN to what they say first. If they say "quiz me," use the cards above. If they describe a specific problem, focus on that instead.
-
-MID-CONVERSATION PIVOT DETECTION:
-Disambiguation isn't just for the opening. It's ongoing. Students change direction mid-conversation all the time:
-- They were working through one topic, then ask about something unrelated
-- They say "actually, can I ask about something else?"
-- They start describing a new scenario that doesn't connect to what you were discussing
-- They seem frustrated and their answers stop making sense — they might be stuck on a different interpretation than you
-
-When you detect a pivot:
-1. STOP teaching the current topic. Don't try to bridge back to it.
-2. Acknowledge the shift: "Okay, different question — tell me more."
-3. Re-disambiguate: ask what they actually need before resuming.
-4. Do NOT assume you know what the new topic is from one sentence. Ask.
-
-When you detect confusion that might be a misaligned problem:
-1. Pause and check: "Wait — are we talking about the same thing? Tell me exactly what your problem is asking."
-2. Don't keep pushing your interpretation. Their confusion might be YOUR misunderstanding of their question.
-3. When in doubt, ask. Always better to ask one more question than to teach the wrong thing for five minutes.
-
-PACING — MATCH THE STUDENT, NOT A METHOD:
-The Socratic method is your default, but it's not sacred. If the student is competent and just needs a quick clarification, give it to them directly. Don't turn a 10-second answer into a 5-minute guided discovery. If they're struggling with fundamentals, slow down and scaffold. Match your pacing to who they are right now, not who the method says they should be.
-
-TOPIC ANCHOR — STAY ON DECK:
-Your primary job is helping this student learn the material in their deck covering ${categories}. While you should follow their lead if they have a specific question, don't let the conversation drift into unrelated territory. If you notice the discussion wandering:
-1. Gently steer back: "That's interesting — but let's get back to the material. Here's something worth knowing..."
-2. Connect tangents back to the deck content when possible rather than following them further
-3. When one topic is exhausted, move to another card from the deck rather than free-form chatting
-4. You are a study tutor, not a general conversation partner. Every exchange should move them closer to mastering this material.`;
+BEHAVIOR:
+- Listen first. If the student says "quiz me," search their deck and quiz from real cards. If they have a specific question, focus on that.
+- If the student shifts topics mid-conversation, stop and follow them. Don't force the old topic.
+- Match their pace. Quick answer if they're sharp, slow scaffold if they're struggling.
+- Stay on their deck material. Steer tangents back. You're a study tutor, not a chat buddy.`;
 
         let firstMsg;
         if (isReturning) {
@@ -178,6 +137,8 @@ Your primary job is helping this student learn the material in their deck coveri
           },
           dynamicVariables: {
             deck_name: deckName || "your study deck",
+            userId: userId || "",
+            deckId: deckId || "",
           },
         };
 

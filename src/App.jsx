@@ -1364,7 +1364,7 @@ export default function App() {
         {mode === "tutor" && <TutorMode cards={filteredCards} deckName={activeDeck?.name} />}
         {mode === "deepdive" && <DeepDiveMode cards={filteredCards} deckName={activeDeck?.name} />}
         {mode === "audio" && <AudioMode cards={filteredCards} />}
-        {mode === "voice" && <VoiceTutorMode cards={filteredCards} deckName={activeDeck?.name} progress={progress} sessionStats={studySessionStats} activeCategory={activeCategory} />}
+        {mode === "voice" && <VoiceTutorMode cards={filteredCards} deckName={activeDeck?.name} deckId={activeDeckId} userId={user?.id} progress={progress} sessionStats={studySessionStats} activeCategory={activeCategory} />}
         {mode === "manage" && (
           <CardManager
             cards={filteredCards}
