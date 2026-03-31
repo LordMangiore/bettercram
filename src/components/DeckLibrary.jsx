@@ -198,7 +198,12 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
     try {
       if (window.plausible) window.plausible("Deck Published");
       await publishDeck(deckId, isCurrentlyPublic ? "unpublish" : "publish", user);
-      if (onRefreshDecks) onRefreshDecks();
+      // Refresh deck list to pick up the isPublic change
+      if (onRefreshDecks) {
+        await onRefreshDecks();
+        // If Firestore listener hasn't caught up yet, try again shortly
+        setTimeout(() => onRefreshDecks(), 1500);
+      }
     } catch (err) {
       alert("Failed to publish: " + err.message);
     } finally {
