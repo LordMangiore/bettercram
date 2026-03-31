@@ -94,10 +94,10 @@ export default function DeckCardMenu({
                 <i className={`fa-solid fa-chevron-${showGroupList ? "up" : "down"} ml-auto text-[10px] text-gray-400`} />
               </button>
               {showGroupList && (
-                <div className="bg-gray-50 dark:bg-gray-750 py-1">
+                <div className="bg-gray-100 dark:bg-gray-900/50 py-1">
                   <button
                     onClick={(e) => { e.stopPropagation(); onAssignGroup(null); setOpenAndNotify(false); }}
-                    className={`w-full text-left px-8 py-2 text-xs ${!deck.group ? "text-indigo-600 dark:text-indigo-400 font-medium" : "text-gray-500 dark:text-gray-400"} hover:bg-gray-100 dark:hover:bg-gray-700`}
+                    className={`w-full text-left px-8 py-2 text-xs ${!deck.group ? "text-indigo-600 dark:text-indigo-400 font-medium" : "text-gray-500 dark:text-gray-400"} hover:bg-gray-200 dark:hover:bg-gray-700`}
                   >
                     No group
                   </button>
@@ -105,7 +105,7 @@ export default function DeckCardMenu({
                     <button
                       key={g.id}
                       onClick={(e) => { e.stopPropagation(); onAssignGroup(g.id); setOpenAndNotify(false); }}
-                      className={`w-full text-left px-8 py-2 text-xs ${deck.group === g.id ? "text-indigo-600 dark:text-indigo-400 font-medium" : "text-gray-500 dark:text-gray-400"} hover:bg-gray-100 dark:hover:bg-gray-700`}
+                      className={`w-full text-left px-8 py-2 text-xs ${deck.group === g.id ? "text-indigo-600 dark:text-indigo-400 font-medium" : "text-gray-500 dark:text-gray-400"} hover:bg-gray-200 dark:hover:bg-gray-700`}
                     >
                       {g.name}
                     </button>
