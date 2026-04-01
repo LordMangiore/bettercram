@@ -191,6 +191,8 @@ export default function LandingPageV2({ dark, setDark, setPage, otpStep, otpEmai
     { icon: "fa-comments", title: "Nova", desc: "A voice tutor who actually knows your deck. She searches your cards mid-conversation, quizzes you from real material, and adapts to how you're doing. Come in frustrated and she meets you there. Start crushing it and she stops holding back.", color: "text-pink-500", bg: "bg-pink-500/10", pro: true },
     { icon: "fa-camera", title: "Import Anything", desc: "Paste a URL, upload a PDF, import from Anki, or just photograph your handwritten notes. AI reads everything and builds your deck. Textbooks get auto-tagged by chapter so you can study one section at a time.", color: "text-cyan-500", bg: "bg-cyan-500/10" },
     { icon: "fa-user-group", title: "Collaborate", desc: "Invite friends to build a deck together. Real co-editing, not just sharing a copy. Share an invite link and your whole study group is in. Everyone studies from the same cards, and everyone can add to them.", color: "text-amber-500", bg: "bg-amber-500/10" },
+    { icon: "fa-users", title: "Community", desc: "Browse decks other students have shared. When someone generates audio or quiz questions, those get cached for everyone. The more people who study, the faster the whole platform gets.", color: "text-orange-500", bg: "bg-orange-500/10" },
+    { icon: "fa-fire", title: "The Little Things", desc: "Streak heat that glows from warm orange to white-hot. Notifications that range from a gentle nudge to \"your flashcards filed a missing persons report.\" We honestly spent way too long on the stuff that makes you smile.", color: "text-red-500", bg: "bg-red-500/10" },
   ];
 
   const STEPS = [

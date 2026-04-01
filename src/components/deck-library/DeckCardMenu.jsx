@@ -142,11 +142,17 @@ export default function DeckCardMenu({
             suggestionCount > 0 ? <span className="ml-auto text-[10px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full">{suggestionCount}</span> : null
           )}
 
-          {/* Doc-linked actions */}
-          {hasDocUrl && hasCards && !isReference && (
+          {/* Add more cards — available for any deck with cards */}
+          {hasCards && !isReference && (
             <>
               {divider()}
               {menuItem("Add More Cards", "fa-plus", () => { setOpenAndNotify(false); onAddMore(); }, "text-emerald-600 dark:text-emerald-400")}
+            </>
+          )}
+
+          {/* Doc-linked actions — regenerate needs the original source */}
+          {hasDocUrl && hasCards && !isReference && (
+            <>
               {!confirmRegen
                 ? menuItem("Regenerate Cards", "fa-rotate", () => setConfirmRegen(true), "text-orange-600 dark:text-orange-400")
                 : (
