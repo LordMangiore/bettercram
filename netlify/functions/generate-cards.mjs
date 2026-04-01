@@ -21,7 +21,7 @@ export default async (req) => {
       ? "\nDENSITY: Focus only on the most important, high-yield concepts. Be selective — quality over quantity. Only create cards for key definitions, critical processes, and must-know facts.\n"
       : density === "comprehensive"
       ? "\nDENSITY: Extract everything worth studying. Be thorough — cover every definition, process, comparison, example, and application. Leave nothing out.\n"
-      : "";
+      : "\nDENSITY: Create a card for EVERY distinct fact, concept, case, date, process, example, and sub-point in the content. If the source has bullet points, each bullet should generate at least one card. Do NOT summarize multiple concepts into a single card. More cards is better than fewer. If in doubt, make a card.\n";
 
     const systemPrompt = `You are an expert tutor creating flashcards from study material.
 Generate flashcards as a JSON array. Each flashcard should have:
@@ -72,7 +72,7 @@ Return ONLY a valid JSON array, no markdown fences, no other text. Start with [ 
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemPrompt,
       messages: [
         {
