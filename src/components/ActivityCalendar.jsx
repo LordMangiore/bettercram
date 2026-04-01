@@ -108,15 +108,15 @@ export default function ActivityCalendar({ activity = [], streak = 0 }) {
       <div className="overflow-x-auto -mx-2 px-2 hide-scrollbar">
         <div className="inline-block">
           {/* Month labels */}
-          <div className="flex ml-8 mb-1">
+          <div className="relative ml-8 mb-1 h-4">
             {monthLabels.map((m, i) => (
-              <div
+              <span
                 key={i}
-                className="text-[10px] text-gray-400 dark:text-gray-500"
-                style={{ position: "relative", left: `${m.week * 14}px` }}
+                className="absolute text-[10px] text-gray-400 dark:text-gray-500"
+                style={{ left: `${m.week * 14}px` }}
               >
                 {m.label}
-              </div>
+              </span>
             ))}
           </div>
 
