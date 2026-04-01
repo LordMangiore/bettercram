@@ -1462,7 +1462,6 @@ export default function App() {
               onUpdateProgress={handleUpdateProgress}
               onSessionStatsChange={setStudySessionStats}
               deckId={activeDeckId}
-              fsrsParams={fsrsParams}
               onRegenCard={handleRegenCard}
               onSuspendCard={handleSuspendCard}
             />
