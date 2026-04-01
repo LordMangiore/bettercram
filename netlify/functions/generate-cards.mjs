@@ -20,7 +20,7 @@ export default async (req) => {
     const densityInstruction = density === "concise"
       ? "\nDENSITY: Focus only on the most important, high-yield concepts. Be selective — quality over quantity. Only create cards for key definitions, critical processes, and must-know facts.\n"
       : density === "comprehensive"
-      ? "\nDENSITY: Extract everything worth studying. Be thorough — cover every definition, process, comparison, example, and application. Leave nothing out.\n"
+      ? "\nDENSITY — MAXIMUM EXTRACTION: Create a card for EVERY single fact, sub-point, bullet, case name, date, definition, process, example, comparison, and detail in the content. If a bullet point has 3 sub-points, that's 3 cards minimum. If a case is mentioned with a year and a ruling, that's its own card. If a concept has examples listed, each example gets a card. Never combine multiple facts into one card. Never skip a bullet point. Never summarize. The student wrote these notes because every point matters to them. Leave NOTHING out. Aim for at least 2-3 cards per paragraph or section of notes.\n"
       : "\nDENSITY: Create a card for EVERY distinct fact, concept, case, date, process, example, and sub-point in the content. If the source has bullet points, each bullet should generate at least one card. Do NOT summarize multiple concepts into a single card. More cards is better than fewer. If in doubt, make a card.\n";
 
     const systemPrompt = `You are an expert tutor creating flashcards from study material.
