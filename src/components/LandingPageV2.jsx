@@ -53,9 +53,9 @@ const DEMO_CARDS = [
   { front: "What makes BetterCram different from regular flashcards?", back: "7 study modes: flip cards, spaced repetition, AI quizzes, AI tutor, deep research, audio lessons, and Nova voice tutor.", category: "Getting Started" },
   { front: "How does spaced repetition work?", back: "FSRS tracks which cards you know. Rate each card and it calculates the optimal review moment. Study less, remember more.", category: "Study" },
   { front: "How do AI-generated quizzes work?", back: "Claude AI generates multiple-choice questions from your cards, focusing on your weakest areas. Detailed explanations for every answer.", category: "Test" },
-  { front: "Who is Nova?", back: "Your AI voice tutor. She quizzes you, explains concepts, and adapts to how you're doing. Like studying with a smart friend.", category: "Nova" },
+  { front: "Who is Nova?", back: "Your AI voice tutor. She searches your actual deck mid-conversation, quizzes you from real cards, and adapts her style to how you're doing.", category: "Nova" },
   { front: "What does Sage do?", back: "Podcast-style audio for every card. Enable auto-play to study hands-free while commuting, exercising, or relaxing.", category: "Sage" },
-  { front: "How do you add study material?", back: "Paste any URL — Google Doc, website, textbook. BetterCram scrapes the content and generates flashcards automatically.", category: "Your Content" },
+  { front: "How do you add study material?", back: "Paste a URL, upload a PDF, import Anki decks, or photograph your handwritten notes. Textbooks get auto-tagged by chapter.", category: "Import" },
 ];
 
 function DemoCard() {
@@ -188,9 +188,9 @@ export default function LandingPageV2({ dark, setDark, setPage, otpStep, otpEmai
     { icon: "fa-book-open", title: "Study", desc: "Powered by FSRS, the next-gen spaced repetition algorithm that replaced what Anki uses. It figures out exactly when you're about to forget something and puts it back in front of you. Cards you struggle with show up more. Cards you nail fade back. Hit a streak and watch your card start glowing.", color: "text-blue-500", bg: "bg-blue-500/10" },
     { icon: "fa-brain", title: "Test", desc: "Claude reads your cards and writes real exam-style questions. Not just the flashcard flipped around. It goes after your weak spots first, and the question bank keeps growing every time you study.", color: "text-purple-500", bg: "bg-purple-500/10" },
     { icon: "fa-podcast", title: "Sage", desc: "Every card gets a podcast-style audio lesson. Hit play and study while you commute, cook, or pretend to clean your apartment. Auto-play chains them together so you don't have to touch anything.", color: "text-emerald-500", bg: "bg-emerald-500/10", pro: true },
-    { icon: "fa-comments", title: "Nova", desc: "A voice tutor who won't just give you the answer. Come in frustrated and she meets you there. Start overthinking and she pulls you back to what matters. Push back on her and she actually listens. She sees where you are right now and adjusts everything to match.", color: "text-pink-500", bg: "bg-pink-500/10", pro: true },
-    { icon: "fa-users", title: "Community", desc: "Browse decks other students have shared. When someone generates audio or quiz questions, those get cached for everyone. The more people who study, the faster the whole platform gets.", color: "text-amber-500", bg: "bg-amber-500/10" },
-    { icon: "fa-fire", title: "The Little Things", desc: "Streak heat that glows from warm orange to white-hot. Notifications that range from a gentle nudge to \"your flashcards filed a missing persons report.\" We honestly spent way too long on the stuff that makes you smile.", color: "text-red-500", bg: "bg-red-500/10" },
+    { icon: "fa-comments", title: "Nova", desc: "A voice tutor who actually knows your deck. She searches your cards mid-conversation, quizzes you from real material, and adapts to how you're doing. Come in frustrated and she meets you there. Start crushing it and she stops holding back.", color: "text-pink-500", bg: "bg-pink-500/10", pro: true },
+    { icon: "fa-camera", title: "Import Anything", desc: "Paste a URL, upload a PDF, import from Anki, or just photograph your handwritten notes. AI reads everything and builds your deck. Textbooks get auto-tagged by chapter so you can study one section at a time.", color: "text-cyan-500", bg: "bg-cyan-500/10" },
+    { icon: "fa-user-group", title: "Collaborate", desc: "Invite friends to build a deck together. Real co-editing, not just sharing a copy. Share an invite link and your whole study group is in. Everyone studies from the same cards, and everyone can add to them.", color: "text-amber-500", bg: "bg-amber-500/10" },
   ];
 
   const STEPS = [
@@ -261,12 +261,12 @@ export default function LandingPageV2({ dark, setDark, setPage, otpStep, otpEmai
       <FadeInSection>
         <section className="max-w-4xl mx-auto px-6 py-20">
           <h3 className={`text-center text-3xl sm:text-4xl font-bold mb-4 ${dark ? "" : "text-gray-900"}`}>Three steps. That's it.</h3>
-          <p className={`text-center mb-12 max-w-lg mx-auto ${dark ? "text-gray-400" : "text-gray-500"}`}>No setup wizards. No configuration. Paste a link and start studying.</p>
+          <p className={`text-center mb-12 max-w-lg mx-auto ${dark ? "text-gray-400" : "text-gray-500"}`}>No setup wizards. No configuration. Give it your material and start studying.</p>
           <div className="grid sm:grid-cols-3 gap-8">
             {[
-              { num: "1", icon: "fa-link", title: "Paste a link", desc: "Any Google Doc, website, or textbook URL." },
-              { num: "2", icon: "fa-wand-magic-sparkles", title: "AI builds your deck", desc: "Cards, quizzes, audio lessons, and tutor context — generated in one pass." },
-              { num: "3", icon: "fa-headphones", title: "Study your way", desc: "Spaced repetition, quizzes, podcasts, or voice tutoring. Pick any mode." },
+              { num: "1", icon: "fa-cloud-arrow-up", title: "Add your material", desc: "Paste a URL, upload a PDF, import from Anki, or photograph your handwritten notes." },
+              { num: "2", icon: "fa-wand-magic-sparkles", title: "AI builds your deck", desc: "Cards tagged by chapter, quizzes, audio lessons, and tutor context — generated automatically." },
+              { num: "3", icon: "fa-headphones", title: "Study your way", desc: "Spaced repetition, quizzes, podcasts, or voice tutoring. Pick any mode. Invite your study group." },
             ].map(step => (
               <div key={step.num} className="text-center">
                 <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto mb-4 text-xl">
