@@ -29,6 +29,7 @@ const VoiceTutorMode = lazy(() => import("./components/VoiceTutorMode"));
 const AboutPage = lazy(() => import("./components/AboutPage"));
 const CardManager = lazy(() => import("./components/CardManager"));
 const PlannerMode = lazy(() => import("./components/PlannerMode"));
+const DeckDashboard = lazy(() => import("./components/DeckDashboard"));
 const LandingPage = lazy(() => import("./components/LandingPage"));
 const LandingPageV2 = lazy(() => import("./components/LandingPageV2"));
 const PrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
@@ -1444,15 +1445,28 @@ export default function App() {
         )}
         {mode === "flip" && <FlipMode cards={filteredCards} onRegenCard={handleRegenCard} />}
         {mode === "study" && (
-          <StudyMode
-            cards={filteredCards}
-            progress={progress}
-            onUpdateProgress={handleUpdateProgress}
-            onSessionStatsChange={setStudySessionStats}
-            deckId={activeDeckId}
-            onRegenCard={handleRegenCard}
-            onSuspendCard={handleSuspendCard}
-          />
+          <>
+            <DeckDashboard
+              decks={decks}
+              activeDeckId={activeDeckId}
+              cards={cards}
+              progress={progress}
+              onSelectDeck={handleSelectDeck}
+              onStartStudy={(deckId) => {
+                if (deckId && deckId !== activeDeckId) handleSelectDeck(deckId);
+              }}
+            />
+            <StudyMode
+              cards={filteredCards}
+              progress={progress}
+              onUpdateProgress={handleUpdateProgress}
+              onSessionStatsChange={setStudySessionStats}
+              deckId={activeDeckId}
+              fsrsParams={fsrsParams}
+              onRegenCard={handleRegenCard}
+              onSuspendCard={handleSuspendCard}
+            />
+          </>
         )}
         {mode === "quiz" && <QuizMode cards={filteredCards} progress={progress} />}
         {mode === "tutor" && <TutorMode cards={filteredCards} deckName={activeDeck?.name} />}
