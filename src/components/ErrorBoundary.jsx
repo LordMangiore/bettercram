@@ -12,6 +12,16 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("ErrorBoundary caught:", error, errorInfo);
+    // Stale chunk after deploy — auto-reload once to get fresh assets
+    if (error?.message?.includes("dynamically imported module") || error?.message?.includes("Failed to fetch")) {
+      const key = "bc-chunk-reload";
+      const last = sessionStorage.getItem(key);
+      if (!last || Date.now() - Number(last) > 10000) {
+        sessionStorage.setItem(key, String(Date.now()));
+        window.location.reload();
+        return;
+      }
+    }
   }
 
   render() {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bettercram-1774894760286';
+const CACHE_NAME = 'bettercram-1775314686616';
 const SHELL_URLS = ['/', '/index.html'];
 
 // Notification preferences (updated via postMessage from the app)

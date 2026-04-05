@@ -216,17 +216,22 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
   // Initialize pool
   useEffect(() => {
     if (!initialized) {
-      const saved = localStorage.getItem("bc-fsrs-session");
+      const saved = localStorage.getItem(`bc-fsrs-session-${deckId}`);
       if (saved) {
         try {
           const s = JSON.parse(saved);
           // Don't restore completed sessions — start fresh
           if (s.sessionComplete) {
-            localStorage.removeItem("bc-fsrs-session");
-          } else {
-            const cardFronts = new Set(cards.map((c) => c.front));
-            const validPool = (s.pool || []).filter((c) => cardFronts.has(c.front));
-            const validAgain = (s.againQueue || []).filter((c) => cardFronts.has(c.front));
+            localStorage.removeItem(`bc-fsrs-session-${deckId}`);
+          } else if (s.poolIds && cards.length > 0) {
+            // Rebuild pool/againQueue from saved IDs
+            const cardMap = new Map();
+            cards.forEach(c => {
+              if (c.id) cardMap.set(c.id, c);
+              cardMap.set(c.front?.slice(0, 40), c);
+            });
+            const validPool = (s.poolIds || []).map(id => cardMap.get(id)).filter(Boolean);
+            const validAgain = (s.againIds || []).map(id => cardMap.get(id)).filter(Boolean);
             if (validPool.length > 0 || validAgain.length > 0) {
               setPool(validPool);
               setAgainQueue(validAgain);
@@ -239,8 +244,9 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
           }
         } catch {}
       }
-      // Also clear old SM-2 session data
+      // Also clear old session data
       localStorage.removeItem("bc-sm2-session");
+      localStorage.removeItem("bc-fsrs-session"); // old non-deck-specific key
       const newPool = buildPool(cards, progress, sessionSize);
       setPool(newPool);
       setIndex(0);
@@ -248,18 +254,28 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
       setSessionComplete(newPool.length === 0);
       setInitialized(true);
     }
-  }, [initialized, cards, progress, sessionSize, buildPool]);
+  }, [initialized, cards, progress, sessionSize, buildPool, deckId]);
 
-  // Persist session (skip if data is too large for localStorage)
+  // Re-initialize if cards arrived after we initialized with 0 cards
+  // Re-initialize when cards arrive after empty init (async deck load)
   useEffect(() => {
-    if (initialized) {
+    if (initialized && pool.length === 0 && cards.length > 0 && sessionStats.reviewed === 0) {
+      const newPool = buildPool(cards, progress, sessionSize);
+      setPool(newPool);
+      setIndex(0);
+      setSessionComplete(newPool.length === 0);
+    }
+  }, [cards]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist session per deck (skip if data is too large for localStorage)
+  useEffect(() => {
+    if (initialized && deckId) {
       try {
-        // Only save minimal session state, not full card data
         const sessionData = { poolIds: pool.map(c => c.id || c.front?.slice(0, 40)), againIds: againQueue.map(c => c.id || c.front?.slice(0, 40)), index, sessionStats, sessionComplete };
-        localStorage.setItem("bc-fsrs-session", JSON.stringify(sessionData));
+        localStorage.setItem(`bc-fsrs-session-${deckId}`, JSON.stringify(sessionData));
       } catch {}
     }
-  }, [pool, againQueue, index, sessionStats, sessionComplete, initialized]);
+  }, [pool, againQueue, index, sessionStats, sessionComplete, initialized, deckId]);
 
   useEffect(() => {
     localStorage.setItem("bc-study-session-size", sessionSize.toString());
@@ -475,7 +491,7 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
   }
 
   function resetSession() {
-    localStorage.removeItem("bc-fsrs-session");
+    localStorage.removeItem(`bc-fsrs-session-${deckId}`);
     const newPool = buildPool(cards, progress, sessionSize);
     setPool(newPool);
     setIndex(0);
@@ -486,7 +502,7 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
   }
 
   function startStudyAhead() {
-    localStorage.removeItem("bc-fsrs-session");
+    localStorage.removeItem(`bc-fsrs-session-${deckId}`);
     // Include ALL cards regardless of due date, shuffled
     const allCards = [...cards].sort(() => Math.random() - 0.5);
     const capped = sessionSize > 0 ? allCards.slice(0, sessionSize) : allCards;
@@ -500,7 +516,7 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
 
   function handleSessionSizeChange(size) {
     setSessionSize(size);
-    localStorage.removeItem("bc-fsrs-session");
+    localStorage.removeItem(`bc-fsrs-session-${deckId}`);
     const newPool = buildPool(cards, progress, size);
     setPool(newPool);
     setIndex(0);
@@ -511,6 +527,18 @@ export default function StudyMode({ cards, progress, onUpdateProgress, onSession
   }
 
   if (!initialized) return null;
+
+  // Loading state — cards haven't arrived yet (async deck load in progress)
+  if (cards.length === 0 && pool.length === 0 && sessionStats.reviewed === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900/40 mb-4 animate-pulse">
+          <i className="fa-solid fa-hourglass-half text-2xl text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <p className="text-gray-500 dark:text-gray-400">Loading cards...</p>
+      </div>
+    );
+  }
 
   // Session complete screen — only show if you actually reviewed cards
   if (sessionComplete && sessionStats.reviewed > 0) {

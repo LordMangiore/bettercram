@@ -1,6 +1,26 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { loadActivity } from "../api";
 import ActivityCalendar from "./ActivityCalendar";
+import { DECK_COLORS } from "./deck-library/DeckCardMenu";
+
+const DEFAULT_DECK_COLORS = [
+  "from-indigo-500 to-purple-600",
+  "from-emerald-500 to-teal-600",
+  "from-orange-500 to-red-600",
+  "from-pink-500 to-rose-600",
+  "from-cyan-500 to-blue-600",
+  "from-amber-500 to-yellow-600",
+  "from-violet-500 to-fuchsia-600",
+  "from-lime-500 to-green-600",
+];
+
+function getDeckGradient(deck, index) {
+  if (deck.color) {
+    const found = DECK_COLORS.find(c => c.id === deck.color);
+    if (found) return found.gradient;
+  }
+  return DEFAULT_DECK_COLORS[index % DEFAULT_DECK_COLORS.length];
+}
 
 // ─── FSRS state helpers ─────────────────────────────────────
 
@@ -179,7 +199,7 @@ export default function DeckDashboard({ decks, activeDeckId, cards, progress, on
           <span className="w-14 text-center text-xs font-semibold text-green-500 uppercase tracking-wider">Due</span>
         </div>
 
-        {decks.filter(d => !d.isCollab || d.cardCount > 0).map(deck => {
+        {decks.filter(d => !d.isCollab || d.cardCount > 0).map((deck, deckIndex) => {
           const isActive = deck.id === activeDeckId;
           const stats = isActive && activeStats ? activeStats : null;
           const isExpanded = expandedDeck === deck.id;
@@ -201,8 +221,9 @@ export default function DeckDashboard({ decks, activeDeckId, cards, progress, on
                   setExpandedDeck(isExpanded ? null : deck.id);
                 }}
               >
-                {/* Expand arrow + deck name */}
+                {/* Color dot + expand arrow + deck name */}
                 <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full bg-gradient-to-br ${getDeckGradient(deck, deckIndex)} flex-shrink-0`} />
                   <i className={`fa-solid fa-chevron-right text-[10px] text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                   <div className="min-w-0">
                     <p className={`text-sm font-medium truncate ${isActive ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-white"}`}>

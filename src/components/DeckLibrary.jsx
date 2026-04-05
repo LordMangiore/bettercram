@@ -3,7 +3,7 @@ import { publishDeck, browsePublicDecks, subscribeToDeck, cloneDeck, upvotePubli
 import { parseAnkiFile, uploadAnkiMedia, resolveCardMedia } from "../lib/ankiParser";
 import SuggestEditModal from "./SuggestEditModal";
 import SuggestionPanel from "./SuggestionPanel";
-import DeckCardMenu from "./deck-library/DeckCardMenu";
+import DeckCardMenu, { DECK_COLORS } from "./deck-library/DeckCardMenu";
 import CollaboratorModal from "./CollaboratorModal";
 
 const COLORS = [
@@ -17,8 +17,12 @@ const COLORS = [
   "from-lime-500 to-green-600",
 ];
 
-function getColor(index) {
-  return COLORS[index % COLORS.length];
+function getColor(indexOrColorId) {
+  if (typeof indexOrColorId === "string") {
+    const found = DECK_COLORS.find(c => c.id === indexOrColorId);
+    if (found) return found.gradient;
+  }
+  return COLORS[indexOrColorId % COLORS.length];
 }
 
 // Maps test color ids to tailwind classes
@@ -52,7 +56,7 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, onAddDeckOptimistic, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, deckGroups = [], onSaveDeckGroups, onAssignDeckGroup, onStudyGroup, onRenameDeck }) {
+export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreateDeck, onDeleteDeck, onGenerateFromDoc, generating, generatingStatus, onRefreshDecks, onAddDeckOptimistic, user, onRegenerate, onAddMore, onManageCards, onShowPlanner, studyPlan, deckGroups = [], onSaveDeckGroups, onAssignDeckGroup, onStudyGroup, onRenameDeck, onChangeDeckColor }) {
   const [showCreate, setShowCreate] = useState(false);
   const [suggestModal, setSuggestModal] = useState(null); // { publicDeckId, card?, type }
   const [suggestionPanel, setSuggestionPanel] = useState(null); // { publicDeckId, deckName }
@@ -293,7 +297,10 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
           options.directCards = uploadReady.cards;
           options.skipGenerate = true;
         } else if (uploadReady.type === "text") {
-          options.uploadedContent = uploadReady.content;
+          // For handwritten notes, prepend a hint so Claude knows it's OCR text
+          options.uploadedContent = uploadReady.source === "handwritten"
+            ? `[Note: This text was OCR'd from handwritten notes. Some words may be misread — use context to infer the correct terms. Create cards from ALL readable content.]\n\n${uploadReady.content}`
+            : uploadReady.content;
         }
       } else if (createMode === "topic") {
         options.topic = newTopic.trim();
@@ -346,7 +353,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
         } ${menuOpenDeckId === deck.id ? "z-30" : ""}`}
       >
         {/* Gradient header — clean: name + 3-dot menu only */}
-        <div className={`bg-gradient-to-br ${getColor(colorIndex)} p-5 rounded-t-2xl`}>
+        <div className={`bg-gradient-to-br ${getColor(deck.color || colorIndex)} p-5 rounded-t-2xl`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               {renamingDeckId === deck.id ? (
@@ -393,6 +400,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                 suggestionCount={pendingSuggestions}
                 onDelete={() => setConfirmDeleteDeckId(deck.id)}
                 onCollaborators={() => setCollabModal({ deckId: deck.id, deckName: deck.name })}
+                onChangeColor={(colorId) => onChangeDeckColor?.(deck.id, colorId)}
                 onLeaveDeck={deck.isCollab ? () => {
                   if (confirm(`Leave "${deck.name}"? You'll lose access to this deck.`)) {
                     import("../api").then(({ manageCollaborators }) => {
@@ -653,31 +661,30 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                         const imageFiles = files.filter(f => imageExts.includes(f.name.toLowerCase().split(".").pop()));
                         setUploadParsing(true);
 
-                        // Helper: resize image to fit within max dimensions (saves bandwidth + avoids payload limits)
+                        // Helper: resize + auto-rotate image (fixes sideways phone photos via EXIF correction)
                         async function resizeImage(file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) {
-                          return new Promise((resolve) => {
-                            const img = new Image();
-                            img.onload = () => {
-                              let { width, height } = img;
-                              if (width <= maxWidth && height <= maxHeight && file.size < 1024 * 1024) {
-                                resolve(file); // already small enough
-                                return;
-                              }
-                              const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
-                              width = Math.round(width * ratio);
-                              height = Math.round(height * ratio);
-                              const canvas = document.createElement("canvas");
-                              canvas.width = width;
-                              canvas.height = height;
-                              const ctx = canvas.getContext("2d");
-                              ctx.drawImage(img, 0, 0, width, height);
+                          try {
+                            // createImageBitmap auto-applies EXIF rotation — fixes sideways photos
+                            const bitmap = await createImageBitmap(file);
+                            let { width, height } = bitmap;
+                            // Always re-encode through canvas to bake in the correct orientation
+                            const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+                            width = Math.round(width * ratio);
+                            height = Math.round(height * ratio);
+                            const canvas = document.createElement("canvas");
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext("2d");
+                            ctx.drawImage(bitmap, 0, 0, width, height);
+                            bitmap.close();
+                            return new Promise((resolve) => {
                               canvas.toBlob((blob) => {
                                 resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
                               }, "image/jpeg", quality);
-                            };
-                            img.onerror = () => resolve(file); // fallback to original
-                            img.src = URL.createObjectURL(file);
-                          });
+                            });
+                          } catch {
+                            return file; // fallback to original if bitmap fails
+                          }
                         }
 
                         try {
@@ -727,6 +734,7 @@ export default function DeckLibrary({ decks, activeDeckId, onSelectDeck, onCreat
                         <i className="fa-solid fa-cloud-arrow-up text-2xl text-gray-400 dark:text-gray-500 mb-2" />
                         <p className="text-sm text-gray-600 dark:text-gray-300">Tap to upload</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PDF, Anki (.apkg), or photos of notes</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Photos: one page per image, held upright</p>
                       </div>
                     )}
                   </button>

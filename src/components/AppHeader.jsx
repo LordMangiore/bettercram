@@ -35,16 +35,16 @@ export default function AppHeader({
   return (
     <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-        {/* Left — logo + deck name */}
+        {/* Left — logo (tap = home/dashboard) + deck name */}
         <div
-          onClick={() => { setMode("study"); setShowPricing(false); window.scrollTo(0, 0); }}
+          onClick={() => { setMode("dashboard"); setShowPricing(false); window.scrollTo(0, 0); }}
           className="cursor-pointer hover:opacity-80 transition-opacity min-w-0"
         >
           <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
             <i className="fa-solid fa-bolt text-indigo-600 dark:text-indigo-400 mr-2" />
             BetterCram
           </h1>
-          {activeDeck && mode !== "library" && (
+          {activeDeck && !["library", "dashboard"].includes(mode) && (
             <p className="text-xs text-gray-400 dark:text-gray-500 truncate pl-7">
               {activeDeck.name}
             </p>
@@ -59,7 +59,7 @@ export default function AppHeader({
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
-                  activeTab === tab.id
+                  activeTab === tab.id && mode !== "dashboard"
                     ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/20"
                     : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50"
                 }`}

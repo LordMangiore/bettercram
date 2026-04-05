@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { setDoc, getDoc } from "./lib/firestore.mjs";
 
 export default async function handler(req) {
   if (req.method !== "POST") {
@@ -28,14 +29,40 @@ export default async function handler(req) {
       return Response.json({ error: "Deck not found" }, { status: 404 });
     }
 
+    // If deck has no inline cards but has a cardCount, load from v2 paginated storage
+    if ((!deck.cards || deck.cards.length === 0) && deck.cardCount > 0) {
+      const cardStore = getStore("deck-cards");
+      const allCards = [];
+      for (let page = 0; page < Math.ceil(deck.cardCount / 500) + 1; page++) {
+        try {
+          const pageData = await cardStore.get(`${userId}-${deckId}-page-${page}`, { type: "json" });
+          if (pageData?.cards?.length > 0) {
+            allCards.push(...pageData.cards);
+          } else {
+            break;
+          }
+        } catch {
+          break;
+        }
+      }
+      if (allCards.length > 0) {
+        deck.cards = allCards;
+      }
+    }
+
     const publicStore = getStore("public-decks");
 
     if (action === "unpublish") {
-      // Remove from public store
-      await publicStore.delete(`${userId}-${deckId}`);
+      // Remove from public store — use publicId if available (handles dedup case)
+      const publicKey = deck.publicId || `${userId}-${deckId}`;
+      await publicStore.delete(publicKey);
       // Update user's deck to mark as not public
       deck.isPublic = false;
-      await userStore.setJSON(deckId, deck);
+      delete deck.publicId;
+      await Promise.all([
+        userStore.setJSON(deckId, deck),
+        setDoc(`users/${userId}/decks/${deckId}`, { isPublic: false }),
+      ]);
       return Response.json({ success: true, action: "unpublished" });
     }
 
@@ -71,7 +98,10 @@ export default async function handler(req) {
       // Mark user's deck as public, pointing to the existing public entry
       deck.isPublic = true;
       deck.publicId = existingKey;
-      await userStore.setJSON(deckId, deck);
+      await Promise.all([
+        userStore.setJSON(deckId, deck),
+        setDoc(`users/${userId}/decks/${deckId}`, { isPublic: true, publicId: existingKey }),
+      ]);
 
       return Response.json({ success: true, action: "published", publicId: existingKey, deduplicated: true });
     }
@@ -95,10 +125,13 @@ export default async function handler(req) {
 
     await publicStore.setJSON(`${userId}-${deckId}`, publicDeck);
 
-    // Mark user's deck as public
+    // Mark user's deck as public (both Blob and Firestore)
     deck.isPublic = true;
     deck.publicId = `${userId}-${deckId}`;
-    await userStore.setJSON(deckId, deck);
+    await Promise.all([
+      userStore.setJSON(deckId, deck),
+      setDoc(`users/${userId}/decks/${deckId}`, { isPublic: true, publicId: `${userId}-${deckId}` }),
+    ]);
 
     return Response.json({ success: true, action: "published", publicId: `${userId}-${deckId}` });
   } catch (err) {

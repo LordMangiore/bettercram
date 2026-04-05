@@ -1,11 +1,27 @@
 import { useState, useEffect, useRef } from "react";
 
+const DECK_COLORS = [
+  { id: "indigo",  gradient: "from-indigo-500 to-purple-600",  dot: "bg-indigo-500" },
+  { id: "emerald", gradient: "from-emerald-500 to-teal-600",   dot: "bg-emerald-500" },
+  { id: "orange",  gradient: "from-orange-500 to-red-600",     dot: "bg-orange-500" },
+  { id: "pink",    gradient: "from-pink-500 to-rose-600",      dot: "bg-pink-500" },
+  { id: "cyan",    gradient: "from-cyan-500 to-blue-600",      dot: "bg-cyan-500" },
+  { id: "amber",   gradient: "from-amber-500 to-yellow-600",   dot: "bg-amber-500" },
+  { id: "violet",  gradient: "from-violet-500 to-fuchsia-600", dot: "bg-violet-500" },
+  { id: "lime",    gradient: "from-lime-500 to-green-600",     dot: "bg-lime-500" },
+  { id: "slate",   gradient: "from-slate-500 to-gray-700",     dot: "bg-slate-500" },
+  { id: "rose",    gradient: "from-rose-500 to-red-700",       dot: "bg-rose-500" },
+];
+
+export { DECK_COLORS };
+
 export default function DeckCardMenu({
   deck, deckGroups,
   onRename, onManageCards, onExport, onShare, onAssignGroup,
   onRegenerate, onAddMore, onGenerateFromDoc,
   onSuggestCard, onReviewSuggestions, suggestionCount,
   onDelete, onOpenChange, onCollaborators, onLeaveDeck,
+  onChangeColor,
 }) {
   const [open, setOpen] = useState(false);
 
@@ -15,6 +31,7 @@ export default function DeckCardMenu({
   }
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [showGroupList, setShowGroupList] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const menuRef = useRef(null);
 
   // Close on outside click
@@ -69,6 +86,37 @@ export default function DeckCardMenu({
         <div className="absolute right-0 top-10 w-52 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-40 py-1.5 overflow-hidden">
           {/* Rename */}
           {!isReference && menuItem("Rename", "fa-pen", () => { setOpenAndNotify(false); onRename(); })}
+
+          {/* Color */}
+          {!isReference && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowColorPicker(!showColorPicker); }}
+                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+              >
+                <i className="fa-solid fa-palette w-4 text-center text-xs opacity-60" />
+                Color
+                <i className={`fa-solid fa-chevron-${showColorPicker ? "up" : "down"} ml-auto text-[10px] text-gray-400`} />
+              </button>
+              {showColorPicker && (
+                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900/50">
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {DECK_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={(e) => { e.stopPropagation(); onChangeColor(c.id); setOpenAndNotify(false); setShowColorPicker(false); }}
+                        className={`w-8 h-8 rounded-lg bg-gradient-to-br ${c.gradient} transition-all hover:scale-110 flex items-center justify-center ${
+                          deck.color === c.id ? "ring-2 ring-white ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-900" : ""
+                        }`}
+                      >
+                        {deck.color === c.id && <i className="fa-solid fa-check text-white text-xs" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Manage Cards */}
           {hasCards && menuItem("Manage Cards", "fa-pen-to-square", () => { setOpenAndNotify(false); onManageCards(); })}

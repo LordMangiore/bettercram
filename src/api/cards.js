@@ -8,7 +8,10 @@ export async function generateCards(content, category, existingTopics, density) 
     body: JSON.stringify({ content, category, existingTopics, density }),
   });
   if (!res.ok) throw new Error(await safeError(res, "Failed to generate cards"));
-  return res.json();
+  // Response streams keepalive spaces then JSON on the last line
+  const text = await res.text();
+  const jsonStr = text.trim().split("\n").pop();
+  return JSON.parse(jsonStr);
 }
 
 export async function generateMore(existingCards, content) {

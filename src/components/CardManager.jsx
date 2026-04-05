@@ -10,7 +10,7 @@ import CategoryInput from "./card-manager/CategoryInput";
 const DIFFICULTY_OPTIONS = ["easy", "medium", "hard"];
 const PAGE_SIZE = 50;
 
-export default function CardManager({ cards, allCards, categories, onAddCard, onEditCard, onDeleteCard, isReference, subscribedTo }) {
+export default function CardManager({ cards, allCards, categories, onAddCard, onEditCard, onDeleteCard, onDeleteCards, isReference, subscribedTo }) {
   // --- Suggest edit (subscribed decks) ---
   const [suggestModal, setSuggestModal] = useState(null);
 
@@ -139,9 +139,7 @@ export default function CardManager({ cards, allCards, categories, onAddCard, on
   }
 
   function handleBulkDelete() {
-    for (const id of selectedIds) {
-      onDeleteCard(id);
-    }
+    onDeleteCards(Array.from(selectedIds));
     deselectAll();
   }
 

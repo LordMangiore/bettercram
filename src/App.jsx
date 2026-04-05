@@ -117,8 +117,8 @@ function trackEvent(name, props) {
 export default function App() {
   const [cards, setCards] = useState([]);
   const [progress, setProgress] = useState({});
-  const [mode, setMode] = useState("study");
-  const [activeTab, setActiveTab] = useState("cards");
+  const [mode, setMode] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("home");
   const [activeCategory, setActiveCategory] = useState("All");
   const [showSetup, setShowSetup] = useState(false);
   const [page, setPage] = useState(null);
@@ -269,6 +269,17 @@ export default function App() {
 
   // In-memory deck cache (avoids re-downloading 500KB on deck switch)
   const deckCacheRef = useRef(new Map());
+  // Track recently deleted deck IDs so the Firestore listener doesn't re-add them from cache
+  const deletedDeckIdsRef = useRef(new Set());
+  // Track which deck the current `cards` state belongs to (prevents cross-deck saves)
+  const cardsDeckRef = useRef(null);
+  // Keep a ref of activeDeckId for async staleness checks
+  const activeDeckIdRef = useRef(activeDeckId);
+  useEffect(() => { activeDeckIdRef.current = activeDeckId; }, [activeDeckId]);
+  // Sync cardsDeckRef when cards are set (covers card gen, import, add, etc.)
+  useEffect(() => {
+    if (cards.length > 0 && activeDeckId) cardsDeckRef.current = activeDeckId;
+  }, [cards, activeDeckId]);
 
   // Load decks — direct Firestore read with API fallback, real-time listener
   useEffect(() => {
@@ -339,6 +350,7 @@ export default function App() {
             const { deck: fullDeck } = await loadDeck(targetId);
             if (fullDeck?.cards?.length > 0) {
               setCards(ensureCardIds(fullDeck.cards));
+              cardsDeckRef.current = targetId;
               deckCacheRef.current.set(targetId, { cards: fullDeck.cards, at: Date.now() });
               if (!fsProgress && fullDeck.progress) setProgress(fullDeck.progress);
             }
@@ -371,8 +383,18 @@ export default function App() {
 
         // Start real-time listeners
         unsubDecks = onDecksChanged(user.id, (updatedDecks) => {
-          if (updatedDecks.length > 0) {
-            setDecks(updatedDecks);
+          // Filter out recently deleted decks (Firestore cache may still have them)
+          const filtered = deletedDeckIdsRef.current.size > 0
+            ? updatedDecks.filter(d => !deletedDeckIdsRef.current.has(d.id))
+            : updatedDecks;
+          // If a deleted deck is no longer in Firestore, it's safe to stop filtering it
+          for (const id of deletedDeckIdsRef.current) {
+            if (!updatedDecks.some(d => d.id === id)) {
+              deletedDeckIdsRef.current.delete(id);
+            }
+          }
+          if (filtered.length > 0) {
+            setDecks(filtered);
             setHasEverLoadedDecks(true);
           }
         });
@@ -428,20 +450,24 @@ export default function App() {
   // Deck management
   // Shared helper: chunk content and batch-generate cards
   async function generateFromContent(content, setStatus, { density = "balanced" } = {}) {
-    const densityChunkSize = { concise: 8000, balanced: 4000, comprehensive: 2500 };
+    const densityChunkSize = { concise: 8000, balanced: 4000, comprehensive: 2000 };
     const chunkSize = densityChunkSize[density] || 4000;
 
     // Helper: generate with retry
     async function generateWithRetry(chunk, category, topics, retries = 2) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-          return await generateCards(chunk, category || null, topics || undefined, density);
+          console.log(`generateCards attempt ${attempt + 1}/${retries + 1}, chunk ${chunk.length} chars, density=${density}`);
+          const result = await generateCards(chunk, category || null, topics || undefined, density);
+          console.log(`generateCards success: ${result?.cards?.length || 0} cards`);
+          return result;
         } catch (e) {
+          console.error(`generateCards attempt ${attempt + 1} failed:`, e.message);
           if (attempt === retries) {
-            console.error("Chunk failed after retries:", e.message);
+            console.error("Chunk failed after all retries:", e.message);
             return { cards: [] };
           }
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
         }
       }
       return { cards: [] };
@@ -456,7 +482,7 @@ export default function App() {
 
       for (let i = 0; i < chunks.length; i += PARALLEL) {
         const batchNum = Math.floor(i / PARALLEL) + 1;
-        setStatus(`${startLabel}Generating cards... batch ${batchNum}/${totalBatches} — ${cards.length} cards so far`);
+        setStatus(`${startLabel}Generating cards... batch ${batchNum}/${totalBatches}${cards.length > 0 ? ` — ${cards.length} cards so far` : " — this may take 15-30s"}`);
         const batch = chunks.slice(i, i + PARALLEL);
         const results = await Promise.allSettled(
           batch.map(chunk => generateWithRetry(chunk, category, coveredTopics))
@@ -613,14 +639,27 @@ export default function App() {
       const withIds = ensureCardIds(options.directCards);
       await finalizeDeck(deckId, deck, withIds, { sourceType: "anki-import" });
     } else if (options.uploadedContent) {
-      // === PDF UPLOAD: Text extracted, generate cards from it ===
+      // === FILE UPLOAD (PDF / handwritten image): Text extracted, generate cards ===
       setGenerating(true);
-      setGeneratingStatus("PDF text extracted. Generating flashcards...");
+      setGeneratingStatus("Text extracted. Generating flashcards...");
       try {
         const withIds = await generateFromContent(options.uploadedContent, setGeneratingStatus, { density: options.density });
-        await finalizeDeck(deckId, deck, withIds, { sourceType: "pdf-upload" });
+        if (withIds.length === 0 && options.uploadedContent.length > 50) {
+          // Content was real but generation returned nothing — retry once
+          setGeneratingStatus("No cards generated — retrying...");
+          const retry = await generateFromContent(options.uploadedContent, setGeneratingStatus, { density: options.density || "comprehensive" });
+          if (retry.length > 0) {
+            await finalizeDeck(deckId, deck, retry, { sourceType: "file-upload" });
+          } else {
+            await finalizeDeck(deckId, deck, [], { sourceType: "file-upload" });
+            alert("Could not generate cards from this content. Try adding cards manually or re-uploading with a clearer image.");
+            setMode("manage");
+          }
+        } else {
+          await finalizeDeck(deckId, deck, withIds, { sourceType: "file-upload" });
+        }
       } catch (e) {
-        console.error("PDF card generation failed:", e);
+        console.error("File card generation failed:", e);
         alert("Failed to generate cards: " + e.message + "\nYou can add cards manually.");
         setMode("manage");
       } finally {
@@ -723,9 +762,11 @@ export default function App() {
 
   async function handleDeleteDeck(deckId) {
     trackEvent("Deck Deleted");
-    await apiDeleteDeck(deckId);
+    // Mark as deleted so the Firestore real-time listener doesn't re-add it from cache
+    deletedDeckIdsRef.current.add(deckId);
     const remaining = decks.filter(d => d.id !== deckId);
     setDecks(remaining);
+    deckCacheRef.current.delete(deckId);
     if (activeDeckId === deckId) {
       if (remaining.length > 0) {
         handleSelectDeck(remaining[0].id);
@@ -735,11 +776,18 @@ export default function App() {
         setProgress({});
       }
     }
+    try {
+      await apiDeleteDeck(deckId);
+    } catch (e) {
+      console.error("Delete deck failed:", e);
+      // Remove from deleted set so it can reappear if server delete failed
+      deletedDeckIdsRef.current.delete(deckId);
+    }
   }
 
   async function handleSelectDeck(deckId, { switchMode = true } = {}) {
-    // Save current deck state first
-    if (activeDeckId && cards.length > 0) {
+    // Save current deck state — only if cards actually belong to the active deck
+    if (activeDeckId && cards.length > 0 && cardsDeckRef.current === activeDeckId) {
       const currentDeck = decks.find(d => d.id === activeDeckId);
       if (currentDeck) {
         await saveDeck(activeDeckId, {
@@ -753,11 +801,16 @@ export default function App() {
     }
 
     setActiveDeckId(deckId);
+    // Clear stale cards so StudyMode/dashboard doesn't show wrong deck's data
+    setCards([]);
+    setProgress({});
+    cardsDeckRef.current = null;
 
     // Check in-memory cache first (avoids re-downloading 500KB)
     const cached = deckCacheRef.current.get(deckId);
     if (cached && (Date.now() - cached.at) < 5 * 60 * 1000) {
       setCards(ensureCardIds(cached.cards));
+      cardsDeckRef.current = deckId;
       // Still load fresh progress from Firestore (fast, small)
       fsGetProgress(user.id, deckId).then(p => { if (p) setProgress(p); }).catch(() => {});
       if (switchMode) setMode("study");
@@ -785,25 +838,32 @@ export default function App() {
         }
       }
 
+      // Guard: only update state if this deck is still the active one
+      // (user may have clicked another deck while we were loading)
+      if (deckId !== activeDeckIdRef.current) return;
+
       if (deckCards.length > 0) {
         setCards(ensureCardIds(deckCards));
+        cardsDeckRef.current = deckId;
         deckCacheRef.current.set(deckId, { cards: deckCards, at: Date.now() });
         if (fullDeck?.progress) setProgress(fullDeck.progress);
       } else {
         // Deck exists but no cards yet (blob propagation delay) — retry once after 2s
-        setCards([]);
-        setProgress({});
         setTimeout(async () => {
+          if (deckId !== activeDeckIdRef.current) return; // stale
           try {
             const { deck: retry } = await loadDeck(deckId);
             if (retry?.cards?.length > 0) {
+              if (deckId !== activeDeckIdRef.current) return;
               setCards(ensureCardIds(retry.cards));
+              cardsDeckRef.current = deckId;
               setProgress(retry.progress || {});
             } else {
               // Try v2 paginated storage
               const v2Cards = await loadAllDeckCards(deckId);
-              if (v2Cards.length > 0) {
+              if (v2Cards.length > 0 && deckId === activeDeckIdRef.current) {
                 setCards(ensureCardIds(v2Cards));
+                cardsDeckRef.current = deckId;
               }
             }
           } catch {}
@@ -811,14 +871,14 @@ export default function App() {
       }
     } catch {
       console.log("Failed to load deck cards — will retry");
-      setCards([]);
-      setProgress({});
       // Retry after delay for blob propagation
       setTimeout(async () => {
+        if (deckId !== activeDeckIdRef.current) return;
         try {
           const { deck: retry } = await loadDeck(deckId);
-          if (retry?.cards?.length > 0) {
+          if (retry?.cards?.length > 0 && deckId === activeDeckIdRef.current) {
             setCards(ensureCardIds(retry.cards));
+            cardsDeckRef.current = deckId;
             setProgress(retry.progress || {});
           }
         } catch {}
@@ -857,6 +917,8 @@ export default function App() {
     const cardsLen = cards.length;
     if (cardsLen === lastCardsSave.current) return;
     const timer = setTimeout(() => {
+      // Only save if cards actually belong to this deck
+      if (cardsDeckRef.current !== activeDeckId) return;
       lastCardsSave.current = cardsLen;
       const currentDeck = decks.find(d => d.id === activeDeckId);
       if (currentDeck) {
@@ -893,14 +955,28 @@ export default function App() {
     if (!currentDeck) return;
     try {
       const cardsToSave = updatedCards || cards;
-      // For large decks, only save metadata + progress (cards already in v2 storage)
+      // For large decks, save cards to v2 paginated storage when cards were explicitly changed
       if (cardsToSave.length > 2000) {
-        await saveDeck(activeDeckId, {
-          ...currentDeck,
-          cards: [],
-          cardCount: cardsToSave.length,
-          lastStudied: new Date().toISOString(),
-        });
+        if (updatedCards) {
+          // Cards were modified (add/edit/delete) — re-save to v2 paginated storage
+          const { cards: _, ...meta } = currentDeck;
+          const totalPages = Math.ceil(cardsToSave.length / 500);
+          const fullMeta = { ...meta, cardCount: cardsToSave.length, totalPages, lastStudied: new Date().toISOString() };
+          const CHUNK = 2000;
+          for (let i = 0; i < cardsToSave.length; i += CHUNK) {
+            const chunk = cardsToSave.slice(i, i + CHUNK);
+            const pageOffset = Math.floor(i / 500);
+            await saveDeckV2(activeDeckId, { meta: fullMeta, cards: chunk, progress: i === 0 ? (updatedProgress || undefined) : undefined, pageOffset });
+          }
+        } else {
+          // Only progress/metadata update — save metadata only
+          await saveDeck(activeDeckId, {
+            ...currentDeck,
+            cards: [],
+            cardCount: cardsToSave.length,
+            lastStudied: new Date().toISOString(),
+          });
+        }
         if (updatedProgress) {
           await saveDeckProgress(activeDeckId, updatedProgress);
         }
@@ -944,6 +1020,13 @@ export default function App() {
 
   async function handleDeleteCard(cardId) {
     const updated = cards.filter((c) => c.id !== cardId);
+    setCards(updated);
+    await saveToDeck(updated);
+  }
+
+  async function handleDeleteCards(cardIds) {
+    const idSet = new Set(cardIds);
+    const updated = cards.filter((c) => !idSet.has(c.id));
     setCards(updated);
     await saveToDeck(updated);
   }
@@ -1009,10 +1092,27 @@ export default function App() {
 
   const [generating, setGenerating] = useState(false);
 
+  // Ref for the hidden file input used by "Add More Cards"
+  const addMoreFileRef = useRef(null);
+
   async function handleGenerateMore() {
     const docUrl = activeDeck?.docUrl;
     if (!docUrl) {
-      alert("No document URL linked to this deck. Edit the deck to add one, or add cards manually.");
+      // No URL linked — open file picker so user can upload images/PDFs
+      if (!addMoreFileRef.current) {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif";
+        input.multiple = true;
+        addMoreFileRef.current = input;
+      }
+      addMoreFileRef.current.value = "";
+      addMoreFileRef.current.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+        await handleAddMoreFromFiles(files);
+      };
+      addMoreFileRef.current.click();
       return;
     }
     setGenerating(true);
@@ -1048,6 +1148,81 @@ export default function App() {
     } catch (e) {
       console.error("Generate more failed:", e);
       alert("Failed to generate more cards: " + e.message);
+    } finally {
+      setGenerating(false);
+      setTimeout(() => setGeneratingStatus(""), 5000);
+    }
+  }
+
+  async function handleAddMoreFromFiles(files) {
+    setGenerating(true);
+    try {
+      const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
+
+      async function resizeImage(file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) {
+        try {
+          const bitmap = await createImageBitmap(file);
+          let { width, height } = bitmap;
+          const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+          bitmap.close();
+          return new Promise((resolve) => {
+            canvas.toBlob((blob) => {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+            }, "image/jpeg", quality);
+          });
+        } catch {
+          return file;
+        }
+      }
+
+      let combinedText = "";
+      const { parseUploadedFile } = await import("./api");
+
+      for (let i = 0; i < files.length; i++) {
+        const ext = files[i].name.toLowerCase().split(".").pop();
+        setGeneratingStatus(`Reading ${files.length > 1 ? `file ${i + 1}/${files.length}` : "file"}...`);
+
+        let fileToSend = files[i];
+        if (imageExts.includes(ext)) {
+          fileToSend = await resizeImage(files[i]);
+        }
+        const result = await parseUploadedFile(fileToSend);
+        if (result.content) {
+          combinedText += (combinedText ? "\n\n---\n\n" : "") + result.content;
+        }
+      }
+
+      if (combinedText.length < 20) {
+        alert("Could not read text from the uploaded file(s). Try clearer images.");
+        return;
+      }
+
+      // Prepend OCR hint if images
+      const hasImages = files.some(f => imageExts.includes(f.name.toLowerCase().split(".").pop()));
+      const content = hasImages
+        ? `[Note: This text was OCR'd from handwritten notes. Some words may be misread — use context to infer the correct terms. Create cards from ALL readable content.]\n\n${combinedText}`
+        : combinedText;
+
+      setGeneratingStatus(`${Math.round(combinedText.length / 1000)}k chars extracted. Generating new cards...`);
+      const newCardsBatch = await generateFromContent(content, setGeneratingStatus, { density: "comprehensive" });
+
+      if (newCardsBatch.length > 0) {
+        const merged = [...cards, ...newCardsBatch];
+        setCards(merged);
+        await saveToDeck(merged);
+        setGeneratingStatus(`Added ${newCardsBatch.length} new cards! Total: ${merged.length}`);
+      } else {
+        setGeneratingStatus("Could not generate cards from the uploaded content.");
+      }
+    } catch (e) {
+      console.error("Add more from files failed:", e);
+      alert("Failed to add cards: " + e.message);
     } finally {
       setGenerating(false);
       setTimeout(() => setGeneratingStatus(""), 5000);
@@ -1194,6 +1369,14 @@ export default function App() {
       const deck = decks.find(d => d.id === deckId);
       if (deck) await saveDeck(deckId, { ...deck, name: newName });
     } catch (e) { console.error("Rename deck failed:", e); }
+  }
+
+  async function handleChangeDeckColor(deckId, colorId) {
+    setDecks(prev => prev.map(d => d.id === deckId ? { ...d, color: colorId } : d));
+    try {
+      const deck = decks.find(d => d.id === deckId);
+      if (deck) await saveDeck(deckId, { ...deck, color: colorId });
+    } catch (e) { console.error("Change deck color failed:", e); }
   }
 
   async function handleAssignDeckGroup(deckId, groupId) {
@@ -1368,7 +1551,7 @@ export default function App() {
         {/* Desktop tabs now live in the header (AppHeader) */}
 
         {/* Sub-navigation within active tab */}
-        {!["library", "flip", "manage", "planner"].includes(mode) && (() => {
+        {!["library", "flip", "manage", "planner", "dashboard"].includes(mode) && (() => {
           const currentTab = TABS.find(t => t.id === activeTab);
           if (!currentTab || currentTab.subModes.length <= 1) return null;
           return (
@@ -1384,7 +1567,7 @@ export default function App() {
         })()}
 
         {/* Category filter — only in study modes, not library/manage/planner */}
-        {!["library", "manage", "planner", "voice"].includes(mode) && !showPricing && (
+        {!["library", "manage", "planner", "voice", "dashboard"].includes(mode) && !showPricing && (
           <div className="relative">
             <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none" />
             <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50 dark:from-gray-900 to-transparent z-10 pointer-events-none" />
@@ -1441,31 +1624,34 @@ export default function App() {
             onAssignDeckGroup={handleAssignDeckGroup}
             onStudyGroup={handleStudyGroup}
             onRenameDeck={handleRenameDeck}
+            onChangeDeckColor={handleChangeDeckColor}
           />
         )}
         {mode === "flip" && <FlipMode cards={filteredCards} onRegenCard={handleRegenCard} />}
+        {mode === "dashboard" && (
+          <DeckDashboard
+            decks={decks}
+            activeDeckId={activeDeckId}
+            cards={cards}
+            progress={progress}
+            onSelectDeck={(deckId) => handleSelectDeck(deckId, { switchMode: false })}
+            onStartStudy={(deckId) => {
+              if (deckId && deckId !== activeDeckId) handleSelectDeck(deckId);
+              handleModeChange("study");
+            }}
+          />
+        )}
         {mode === "study" && (
-          <>
-            <DeckDashboard
-              decks={decks}
-              activeDeckId={activeDeckId}
-              cards={cards}
-              progress={progress}
-              onSelectDeck={handleSelectDeck}
-              onStartStudy={(deckId) => {
-                if (deckId && deckId !== activeDeckId) handleSelectDeck(deckId);
-              }}
-            />
-            <StudyMode
-              cards={filteredCards}
-              progress={progress}
-              onUpdateProgress={handleUpdateProgress}
-              onSessionStatsChange={setStudySessionStats}
-              deckId={activeDeckId}
-              onRegenCard={handleRegenCard}
-              onSuspendCard={handleSuspendCard}
-            />
-          </>
+          <StudyMode
+            key={activeDeckId}
+            cards={filteredCards}
+            progress={progress}
+            onUpdateProgress={handleUpdateProgress}
+            onSessionStatsChange={setStudySessionStats}
+            deckId={activeDeckId}
+            onRegenCard={handleRegenCard}
+            onSuspendCard={handleSuspendCard}
+          />
         )}
         {mode === "quiz" && <QuizMode cards={filteredCards} progress={progress} />}
         {mode === "tutor" && <TutorMode cards={filteredCards} deckName={activeDeck?.name} />}
@@ -1480,6 +1666,7 @@ export default function App() {
             onAddCard={handleAddCard}
             onEditCard={handleEditCard}
             onDeleteCard={handleDeleteCard}
+            onDeleteCards={handleDeleteCards}
             isReference={activeDeck?.isReference}
             subscribedTo={activeDeck?.subscribedTo}
           />
@@ -1491,9 +1678,7 @@ export default function App() {
             studyPlan={studyPlan}
             onUpdatePlan={handleUpdateStudyPlan}
             onStartStudy={(deckId) => {
-              if (deckId && deckId !== activeDeckId) {
-                setActiveDeckId(deckId);
-              }
+              if (deckId && deckId !== activeDeckId) handleSelectDeck(deckId);
               handleModeChange("study");
             }}
             decks={decks}
@@ -1523,7 +1708,7 @@ export default function App() {
         />
       )}
 
-      <MobileNav tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} />
+      <MobileNav tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} mode={mode} onGoHome={() => { setMode("dashboard"); setShowPricing(false); window.scrollTo(0, 0); }} />
     </div>
   );
 }

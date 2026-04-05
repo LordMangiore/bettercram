@@ -237,8 +237,8 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
                   : <p className={`${textSize(card.front)} text-gray-800 dark:text-gray-100 font-medium`}>{card.front}</p>;
               })()}
               {card.occlusion && card.frontImages?.[0] ? (
-                <div className="mt-3 flex justify-center" onClick={e => e.stopPropagation()}>
-                  <div className="relative inline-block">
+                <div className="mt-3 flex justify-center">
+                  <div className="relative inline-block" onClick={e => e.stopPropagation()}>
                     <img src={card.frontImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-gray-200 dark:border-gray-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc({ src: card.frontImages[0], maskUrl: card.occlusion?.questionMaskUrl, maskSvg: card.occlusion?.type === "inline" ? card.occlusion?.maskSvg : null }); }} />
                     {card.occlusion.type === "file" && card.occlusion.questionMaskUrl && (
                       <img
@@ -303,8 +303,8 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
                   : <p className={`${textSize(card.back)} text-gray-800 dark:text-gray-100`}>{card.back}</p>;
               })()}
               {card.occlusion && card.backImages?.[0] ? (
-                <div className="mt-3 flex justify-center" onClick={e => e.stopPropagation()}>
-                  <div className="relative inline-block">
+                <div className="mt-3 flex justify-center">
+                  <div className="relative inline-block" onClick={e => e.stopPropagation()}>
                     <img src={card.backImages[0]} alt="" className="block max-h-64 max-w-full rounded-lg border border-indigo-200 dark:border-indigo-700 object-contain cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setLightboxSrc({ src: card.backImages[0], maskUrl: card.occlusion?.answerMaskUrl, maskSvg: null }); }} />
                     {card.occlusion.type === "file" && card.occlusion.answerMaskUrl && (
                       <img
@@ -466,7 +466,7 @@ export default function FlashCard({ card, onKnown, onUnknown, onRate, showAction
           onClick={() => setLightboxSrc(null)}
           onKeyDown={(e) => e.key === "Escape" && setLightboxSrc(null)}
         >
-          <div className="relative inline-block max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+          <div className="relative inline-block max-w-full max-h-full" onClick={() => setLightboxSrc(null)}>
             <img
               src={lightboxSrc.src}
               alt=""

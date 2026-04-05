@@ -5,7 +5,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@anthropic-ai/sdk", "firebase-admin"]
+  external_node_modules = ["@anthropic-ai/sdk", "firebase-admin", "pdf-parse"]
 
 [functions."deep-dive"]
   timeout = 26

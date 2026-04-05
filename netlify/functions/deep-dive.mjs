@@ -74,6 +74,10 @@ export default async (req) => {
     let webContent = "";
     let sources = [];
 
+    if (!searchRes.ok) {
+      console.error("Firecrawl search failed:", searchRes.status, await searchRes.text().catch(() => ""));
+    }
+
     if (searchRes.ok) {
       const searchData = await searchRes.json();
       if (searchData.success && searchData.data) {
@@ -94,7 +98,7 @@ export default async (req) => {
     const deckContext = deckName || card.category || "academic studies";
 
     const message = await anthropic.messages.create({
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,
       system: `You are an expert tutor synthesizing research to deepen a student's understanding of ${deckContext}.
 Given a flashcard topic and web research, create a comprehensive but digestible deep dive.

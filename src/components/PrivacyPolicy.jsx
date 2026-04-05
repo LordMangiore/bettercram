@@ -1,19 +1,22 @@
 export default function PrivacyPolicy({ dark, onBack }) {
   return (
-    <div className={`min-h-screen transition-colors ${dark ? "bg-gray-950 text-white" : "bg-white text-gray-900"}`}>
+    <div className={`min-h-screen transition-colors ${dark ? "bg-gray-950 text-white" : "bg-gradient-to-br from-indigo-50 via-white to-purple-50 text-gray-900"}`}>
       <div className="max-w-3xl mx-auto px-6 py-12">
         <button
           onClick={onBack}
           className={`mb-10 flex items-center gap-2 text-sm transition-colors ${dark ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900"}`}
         >
           <i className="fa-solid fa-arrow-left" />
-          Back
+          Back to BetterCram
         </button>
 
         <div className="mb-10">
-          <h1 className="text-4xl font-bold tracking-tight mb-2">Privacy Policy</h1>
+          <h1 className="text-3xl font-bold flex items-center gap-3 mb-2">
+            <i className="fa-solid fa-bolt text-indigo-500" />
+            Privacy Policy
+          </h1>
           <p className={`text-sm ${dark ? "text-gray-500" : "text-gray-400"}`}>
-            Last updated: March 28, 2026
+            Last updated: April 2, 2026
           </p>
         </div>
 
@@ -48,7 +51,7 @@ export default function PrivacyPolicy({ dark, onBack }) {
             <ul className="list-disc pl-6 space-y-2">
               <li><strong className={dark ? "text-white" : "text-gray-900"}>Email address:</strong> When you sign in via email OTP, we collect your email to create and manage your account. That's it. No passwords are stored on our servers.</li>
               <li><strong className={dark ? "text-white" : "text-gray-900"}>Study content:</strong> Flashcard decks, study progress, quiz results, and study plans you create or generate.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Documents you share:</strong> URLs you provide for flashcard generation. We process these to create study materials, then the raw content is discarded.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Documents you upload:</strong> URLs, PDFs, photos of notes, and Anki decks you provide for flashcard generation. We process these to create study materials, then the raw source content is discarded.</li>
               <li><strong className={dark ? "text-white" : "text-gray-900"}>Usage analytics:</strong> We use Plausible Analytics, a privacy-friendly, cookieless analytics service. This data is aggregated and cannot identify you personally.</li>
             </ul>
             <p className="mt-3">We do <strong className={dark ? "text-white" : "text-gray-900"}>not</strong> collect: your location, your contacts, your browsing history, biometric data, or anything from your device beyond what the app needs to function.</p>
@@ -103,9 +106,19 @@ export default function PrivacyPolicy({ dark, onBack }) {
 
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>7. Community Decks</h2>
-            <p>
-              If you publish a deck to the community library, that deck's content (card fronts, backs, and deck name) becomes publicly accessible. Your name may be displayed as the creator. You can unpublish a deck at any time, and it will be removed from the community library immediately.
+            <p className="mb-3">
+              If you publish a deck to the community library, that deck's content (card fronts, backs, and deck name) becomes publicly accessible. Your display name may be shown as the creator. You can unpublish anytime and it's removed from the library immediately.
             </p>
+            <div className={`p-4 rounded-xl border ${dark ? "bg-gray-900/50 border-white/10" : "bg-gray-50 border-gray-200"}`}>
+              <p className={`font-semibold mb-2 ${dark ? "text-white" : "text-gray-900"}`}>
+                <i className="fa-solid fa-circle-info text-indigo-500 mr-2" />
+                Community content is user-generated
+              </p>
+              <p>
+                Community decks are created entirely by other users. BetterCram does not review, verify, or take responsibility for the accuracy, completeness, or legality of community-shared content. We are not liable for any claims, damages, or losses arising from user-uploaded decks — including copyright issues, inaccurate information, or offensive material. If you spot something that shouldn't be there, let us know at{" "}
+                <a href="mailto:nicho@mangiore.com" className="text-indigo-500 hover:text-indigo-400 underline">nicho@mangiore.com</a>.
+              </p>
+            </div>
           </section>
 
           <section>
@@ -155,9 +168,13 @@ export default function PrivacyPolicy({ dark, onBack }) {
           </section>
         </div>
 
-        <div className={`mt-12 pt-8 border-t text-center text-sm ${dark ? "border-white/10 text-gray-600" : "border-gray-200 text-gray-400"}`}>
-          <i className="fa-solid fa-bolt text-indigo-500 mr-1" />
-          BetterCram &middot; Built by students, for students
+        <div className={`mt-12 pt-8 border-t text-center text-sm ${dark ? "border-white/10 text-gray-500" : "border-gray-200 text-gray-400"}`}>
+          <span>
+            <i className="fa-solid fa-bolt text-indigo-500 mr-1" />
+            BetterCram
+          </span>
+          <span className="mx-2">&middot;</span>
+          <span>bettercram.com</span>
         </div>
       </div>
     </div>

@@ -24,6 +24,21 @@ export default async function handler(req) {
 
     // Delete from Blob (backup cleanup)
     const store = getStore(`decks-${userId}`);
+    // Load deck first to check if it was published
+    let deckData = null;
+    try {
+      deckData = await store.get(deckId, { type: "json" });
+    } catch {}
+
+    // Clean up public-decks if this deck was shared to community
+    if (deckData?.isPublic) {
+      try {
+        const publicStore = getStore("public-decks");
+        const publicKey = deckData.publicId || `${userId}-${deckId}`;
+        await publicStore.delete(publicKey);
+      } catch {}
+    }
+
     await store.delete(deckId);
 
     // Also clean up v2 paginated cards (stays in Blob)

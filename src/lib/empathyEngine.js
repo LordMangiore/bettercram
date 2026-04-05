@@ -339,6 +339,8 @@ Session: streak=${session.streakHeat.toFixed(2)}  frustration=${session.frustrat
 ${modeInstructions[mode] || modeInstructions.balanced}
 
 HOW TO USE THIS: The above is not a script. It's what this person is experiencing right now. Let it shape your tone, your pacing, the questions you choose, and how you respond to wrong answers. The student should never feel analyzed. They should feel understood. There is a difference.
+
+IMPORTANT: Never say any of the above out loud. Never prefix your speech with labels like "excited.", "patient.", "encouraging.", "gently.", etc. Everything you say is spoken aloud by a voice — there is no hidden channel. Your tone must come through naturally in your words, not from annotations.
 --- END EMPATHY ENGINE ---`;
 
   return contextBlock;
@@ -423,6 +425,8 @@ THE OBSERVER'S BRIEF — what this moment feels like for the person you're about
 ${observerBrief}
 
 HOW TO USE THIS: This was written by someone who looked at this student's data and described what they're experiencing. Let it shape your tone, your pacing, the questions you choose, and how you respond to wrong answers. The student should never feel analyzed. They should feel understood.
+
+IMPORTANT: Never say any of the above out loud. Never prefix your speech with labels like "excited.", "patient.", "encouraging.", "gently.", etc. Everything you say is spoken aloud by a voice — there is no hidden channel. Your tone must come through naturally in your words, not from annotations.
 --- END EMPATHY ENGINE ---`;
   }
 

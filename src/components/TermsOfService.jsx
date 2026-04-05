@@ -18,7 +18,7 @@ export default function TermsOfService({ dark, onBack }) {
             Terms of Service
           </h1>
           <p className={`text-sm ${dark ? "text-gray-500" : "text-gray-400"}`}>
-            Last updated: March 23, 2026
+            Last updated: April 2, 2026
           </p>
         </div>
 
@@ -26,109 +26,127 @@ export default function TermsOfService({ dark, onBack }) {
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>1. Acceptance of Terms</h2>
             <p>
-              By accessing or using BetterCram ("the Service"), operated by Nicho Mangiore, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service. We reserve the right to update these terms at any time, and continued use of the Service constitutes acceptance of any changes.
+              By using BetterCram ("the Service"), operated by Nicho Mangiore, you agree to these Terms of Service. If you don't agree, please don't use the Service. We may update these terms from time to time — continued use means you accept any changes.
             </p>
           </section>
 
           <section>
-            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>2. Service Description</h2>
+            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>2. What BetterCram Is</h2>
             <p>
-              BetterCram is an AI-powered study platform that allows users to generate flashcards, quizzes, and study materials from uploaded documents. The Service includes features such as flip cards, smart quizzes, an AI tutor, voice tutoring, audio lessons, deep-dive research, community deck sharing, and study planning tools.
+              BetterCram is an AI-powered study platform. You bring the material — a URL, PDF, photos of your notes, or an Anki deck — and we turn it into flashcards, quizzes, audio lessons, and more. Features include spaced repetition, AI tutoring, voice tutoring with Nova, deep-dive research, community deck sharing, and study planning.
             </p>
           </section>
 
           <section>
-            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>3. Account Responsibilities</h2>
+            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>3. Your Account</h2>
             <ul className="list-disc pl-6 space-y-2">
-              <li>You must sign in using a valid Google account to use BetterCram.</li>
-              <li>You are responsible for maintaining the security of your Google account and any activity that occurs under your BetterCram account.</li>
-              <li>You must provide accurate information and keep your account details up to date.</li>
-              <li>You must be at least 13 years old to use the Service.</li>
-              <li>You may not create multiple accounts to abuse free trials or other features.</li>
+              <li>You need a valid account to use BetterCram (sign in with your email).</li>
+              <li>Keep your account secure — you're responsible for all activity under it.</li>
+              <li>You must be at least 13 years old.</li>
+              <li>One account per person. Don't create extras to game trials or features.</li>
             </ul>
           </section>
 
           <section>
-            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>4. Subscription &amp; Payment Terms</h2>
+            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>4. Plans &amp; Payments</h2>
             <ul className="list-disc pl-6 space-y-2">
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Free Trial:</strong> New users receive a 30-day free trial with full access to all features. No credit card is required to start the trial.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Plans:</strong> BetterCram offers a Starter plan and a Pro plan, available on monthly or annual billing cycles.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Billing:</strong> All payments are processed securely through Stripe. Subscriptions automatically renew at the end of each billing period unless cancelled.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Cancellation:</strong> You can cancel your subscription at any time through the billing portal. You will retain access to paid features until the end of your current billing period.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Refunds:</strong> Refund requests are handled on a case-by-case basis. Please contact us at nicho@mangiore.com for assistance.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Price Changes:</strong> We reserve the right to change pricing. Existing subscribers will be notified in advance of any price changes.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Free Trial:</strong> 30 days, full access, no credit card required.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Plans:</strong> Starter and Pro, available monthly or annually.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Billing:</strong> Processed securely through Stripe. Subscriptions auto-renew unless you cancel.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Cancellation:</strong> Cancel anytime from the billing portal. You keep access through the end of your current period.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Refunds:</strong> Handled case-by-case. Reach out to <a href="mailto:nicho@mangiore.com" className="text-indigo-500 hover:text-indigo-400 underline">nicho@mangiore.com</a>.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Price Changes:</strong> We'll give existing subscribers advance notice before any price changes.</li>
             </ul>
           </section>
 
           <section>
-            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>5. Acceptable Use</h2>
-            <p className="mb-3">You agree not to use BetterCram to:</p>
+            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>5. Play Nice</h2>
+            <p className="mb-3">Don't use BetterCram to:</p>
             <ul className="list-disc pl-6 space-y-2">
-              <li>Upload, generate, or share content that is illegal, harmful, threatening, abusive, defamatory, or otherwise objectionable.</li>
-              <li>Violate any applicable laws or regulations.</li>
-              <li>Infringe on the intellectual property rights of others.</li>
-              <li>Attempt to gain unauthorized access to the Service or its systems.</li>
-              <li>Use automated tools, bots, or scrapers to access the Service without permission.</li>
-              <li>Interfere with or disrupt the Service or its infrastructure.</li>
-              <li>Share or publish content intended to mislead, harass, or harm other users.</li>
+              <li>Upload, generate, or share anything illegal, harmful, abusive, or objectionable.</li>
+              <li>Violate any laws or regulations.</li>
+              <li>Infringe on someone else's intellectual property.</li>
+              <li>Try to hack, scrape, or break into the Service.</li>
+              <li>Interfere with or disrupt the platform for other users.</li>
+              <li>Publish content designed to mislead, harass, or harm others.</li>
             </ul>
           </section>
 
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>6. Intellectual Property</h2>
             <ul className="list-disc pl-6 space-y-2">
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Your Content:</strong> You retain ownership of any content you upload, create, or generate using BetterCram, including your flashcards, study notes, and documents.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>Our Platform:</strong> The BetterCram platform, including its design, code, branding, and proprietary technology, is owned by us and protected by intellectual property laws.</li>
-              <li><strong className={dark ? "text-white" : "text-gray-900"}>License to Us:</strong> By using the Service, you grant us a limited license to process, store, and display your content as necessary to provide the Service. This license ends when you delete your content or account.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Your Stuff:</strong> Everything you upload, create, or generate is yours — your flashcards, notes, documents, all of it.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>Our Platform:</strong> BetterCram's design, code, branding, and technology belong to us and are protected by intellectual property laws.</li>
+              <li><strong className={dark ? "text-white" : "text-gray-900"}>License to Us:</strong> You give us a limited license to process, store, and display your content so we can run the Service. Delete your content or account and that license ends.</li>
             </ul>
           </section>
 
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>7. Community Decks</h2>
+            <p className="mb-3">
+              BetterCram has a community library where users can share decks publicly. Here's how it works:
+            </p>
             <ul className="list-disc pl-6 space-y-2">
-              <li>When you publish a deck to the BetterCram community library, that deck's content becomes publicly accessible to all users.</li>
-              <li>Other users may subscribe to, clone, or study from your published decks.</li>
-              <li>You may unpublish a community deck at any time, which will remove it from the public library.</li>
-              <li>You represent that you have the right to share any content you publish to the community library.</li>
-              <li>We reserve the right to remove any community deck that violates these terms or is reported as inappropriate.</li>
+              <li>When you publish a deck, it becomes accessible to all BetterCram users.</li>
+              <li>Others can subscribe to, clone, and study from your published decks.</li>
+              <li>You can unpublish anytime — it'll be removed from the library.</li>
+              <li>By publishing, you're confirming you have the right to share that content and that it doesn't infringe on anyone else's rights.</li>
+              <li>We can remove any community deck that violates these terms or gets reported.</li>
             </ul>
+            <div className={`mt-4 p-4 rounded-xl border ${dark ? "bg-gray-900/50 border-white/10" : "bg-gray-50 border-gray-200"}`}>
+              <p className={`font-semibold mb-2 ${dark ? "text-white" : "text-gray-900"}`}>
+                <i className="fa-solid fa-circle-info text-indigo-500 mr-2" />
+                Community content is user-generated
+              </p>
+              <p>
+                Community decks are created entirely by other users. BetterCram does not review, verify, endorse, or take responsibility for the accuracy, completeness, legality, or quality of any community-shared content. You study community decks at your own discretion.
+              </p>
+              <p className="mt-2">
+                We are not liable for any claims, damages, or losses arising from user-uploaded content — including copyright issues, inaccurate information, offensive material, or any other harm from community decks.
+              </p>
+              <p className="mt-2">
+                See something that shouldn't be there? Let us know at{" "}
+                <a href="mailto:nicho@mangiore.com" className="text-indigo-500 hover:text-indigo-400 underline">nicho@mangiore.com</a>{" "}
+                and we'll take care of it.
+              </p>
+            </div>
           </section>
 
           <section>
-            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>8. AI-Generated Content Disclaimer</h2>
+            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>8. AI-Generated Content</h2>
             <p>
-              BetterCram uses artificial intelligence (including Anthropic's Claude) to generate flashcards, quiz questions, tutoring responses, audio content, and other study materials. While we strive for accuracy, AI-generated content may contain errors, inaccuracies, or omissions. You should always verify important information with authoritative sources. BetterCram is a study aid and is not a substitute for professional instruction, textbooks, or expert guidance. We are not responsible for any consequences arising from reliance on AI-generated content.
+              BetterCram uses AI (including Anthropic's Claude and ElevenLabs) to generate flashcards, quizzes, tutoring responses, audio lessons, and other study materials. We work hard to make it accurate, but AI can make mistakes — it may produce errors, inaccuracies, or gaps. Always double-check important information with your textbook, professor, or other authoritative sources. BetterCram is a study tool, not a replacement for professional instruction. We're not responsible for consequences arising from reliance on AI-generated content.
             </p>
           </section>
 
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>9. Limitation of Liability</h2>
             <p>
-              To the fullest extent permitted by law, BetterCram and its operator shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of data, profits, or goodwill, arising from your use of or inability to use the Service. The Service is provided "as is" and "as available" without warranties of any kind, whether express or implied. Our total liability for any claim arising from the Service shall not exceed the amount you paid us in the 12 months preceding the claim.
+              To the fullest extent permitted by law, BetterCram and its operator are not liable for any indirect, incidental, special, consequential, or punitive damages — including loss of data, profits, or goodwill — arising from your use of (or inability to use) the Service. The Service is provided "as is" and "as available" without warranties of any kind. Our total liability for any claim won't exceed what you've paid us in the 12 months before the claim.
             </p>
           </section>
 
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>10. Termination</h2>
             <ul className="list-disc pl-6 space-y-2">
-              <li>You may terminate your account at any time by deleting it from the app settings or by contacting us.</li>
-              <li>We reserve the right to suspend or terminate your account if you violate these terms, engage in abusive behavior, or use the Service in a manner that could harm other users or the platform.</li>
-              <li>Upon termination, your access to the Service will cease and your data will be deleted in accordance with our Privacy Policy.</li>
-              <li>Sections regarding intellectual property, limitation of liability, and dispute resolution survive termination.</li>
+              <li>You can delete your account anytime from settings or by contacting us.</li>
+              <li>We can suspend or terminate accounts that violate these terms or harm the community.</li>
+              <li>When your account is terminated, your access ends and data is deleted per our Privacy Policy.</li>
+              <li>Sections on intellectual property, liability, and disputes survive termination.</li>
             </ul>
           </section>
 
           <section>
             <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>11. Governing Law</h2>
             <p>
-              These Terms of Service shall be governed by and construed in accordance with the laws of the United States. Any disputes arising from these terms or the Service shall be resolved through good-faith negotiation, and if necessary, binding arbitration.
+              These terms are governed by U.S. law. Any disputes will be resolved through good-faith negotiation first, and if needed, binding arbitration.
             </p>
           </section>
 
           <section>
-            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>12. Contact Us</h2>
+            <h2 className={`text-lg font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>12. Questions?</h2>
             <p>
-              If you have any questions about these Terms of Service, please contact us at{" "}
+              Reach out anytime at{" "}
               <a href="mailto:nicho@mangiore.com" className="text-indigo-500 hover:text-indigo-400 underline">
                 nicho@mangiore.com
               </a>.
